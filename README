@@ -1,0 +1,5 @@
+My Platformio project files.  
+
+For use of my 16x2 Serial LCD, this repo must be cloned to the lib directory of the project:
+https://gitlab.com/tandembyte/LCD_I2C.git
+
