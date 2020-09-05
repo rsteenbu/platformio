@@ -28,8 +28,8 @@ WiFiServer server(80);
 #define SYSLOG_SERVER "ardupi4"
 #define SYSLOG_PORT 514
 // This device info
-#define DEVICE_HOSTNAME "iot-outsidelight"
-#define APP_NAME "outsidelight"
+#define DEVICE_HOSTNAME "iot-backyardlight"
+#define APP_NAME "light"
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 
