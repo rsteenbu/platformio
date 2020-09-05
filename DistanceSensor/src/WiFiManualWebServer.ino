@@ -36,8 +36,10 @@ WiFiUDP udpClient;
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
+int debug = 0;
+
 // Pin for Relay
-uint8_t relayPin = D5;       // declare external LED pin
+uint8_t relayPin = D5;
 
 // Distance Sensor
 // vin == black
@@ -47,15 +49,14 @@ const int trigPin = D7; //green
 float duration, distance;
 float aggregattedDistance = 0;
 float averageDistance = 0;
-float distanceToMe = 50.0;
+float distanceToMe = 40.0;
+int iterationsBeforeOff = 100;
+int sampleSize = 20;
+bool sensorActive = false;
+bool lightOn = false;
 
 int iteration = 0;
 int timesEmpty = 0;
-int sampleSize = 20;
-// Start with the light off and the relay on
-bool switchActive = true;
-bool lightOn = false;
-int debug = 0;
 
 void setupOTA() {
   ArduinoOTA.onStart([]() {
@@ -90,8 +91,6 @@ void setupOTA() {
     }
   });
   ArduinoOTA.begin();
-  
-  digitalWrite(relayPin, LOW);
 }
 
 void controlLight() {
@@ -123,8 +122,8 @@ void controlLight() {
 
     if ( !lightOn && averageDistance < distanceToMe) {
       // I'm at my desk, turn the light on
-      syslog.log(LOG_INFO, "Turning light ON");
-      digitalWrite(relayPin, HIGH);
+      syslog.log(LOG_INFO, "Person detected, turning light on");
+      digitalWrite(relayPin, LOW);
       timesEmpty = 0;
       lightOn = true;
     } else {
@@ -137,10 +136,14 @@ void controlLight() {
     }
 
     // If I've been away for a while, turn the light off
-    if (lightOn && timesEmpty > 10) {
-      syslog.log(LOG_INFO, "Turning light OFF");
-      digitalWrite(relayPin, LOW);
+    if (lightOn && timesEmpty > iterationsBeforeOff) {
+      syslog.log(LOG_INFO, "Nobody detected, Turning light off");
+      digitalWrite(relayPin, HIGH);
       lightOn = false;
+      // Set the variables back to initial values
+      iteration = 0;
+      aggregattedDistance = 0;
+      timesEmpty = 0;
     }
   }
   delay(10);
@@ -151,7 +154,7 @@ void setup() {
 
   // prepare LED and Relay PINs
   pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, LOW);
+  digitalWrite(relayPin, HIGH);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
@@ -166,7 +169,9 @@ void setup() {
   Serial.println(ssid);
 
   WiFi.mode(WIFI_STA);
+  WiFi.hostname(DEVICE_HOSTNAME);
   WiFi.begin(ssid, password);
+
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -191,7 +196,7 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
 
-  if (switchActive) {
+  if (sensorActive) {
     controlLight();
   }
 
@@ -206,56 +211,67 @@ void loop() {
 
   // Read the first line of the request
   String req = client.readStringUntil('\r');
+  
+  delayMicroseconds(50);
+
+  // Tell the client we're ok
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
 
   // Check the request and determine what to do with the switch relay
-  if (req.indexOf(F("/switch/0")) != -1) {
-    syslog.log(LOG_INFO, "Turning relay switiching off");
-    switchActive = false;
-    // Set the variables back to initial values and close the circuit so the switch will work
+  if (req.indexOf(F("/light/on")) != -1) {
+    if (lightOn) {
+      syslog.log(LOG_INFO, "On requested, but light is already on");
+    } else {
+      syslog.log(LOG_INFO, "Turning light on as requested");
+      digitalWrite(relayPin, LOW);
+      lightOn = true;
+    }
+  } else if (req.indexOf(F("/light/off")) != -1) {
+    if (lightOn) {
+      syslog.log(LOG_INFO, "Turning light off as requested");
+      digitalWrite(relayPin, HIGH);
+      lightOn = false;
+    } else {
+      syslog.log(LOG_INFO, "Off requested, but light is already off");
+    }
+  } else if (req.indexOf(F("/light/status")) != -1) {
+    if (debug == 2) {
+      syslog.logf(LOG_INFO, "Light status: %s", lightOn ? "on" : "off");
+    }
+    client.print(lightOn);
+  } else if (req.indexOf(F("/sensor/on")) != -1) {
+    syslog.log(LOG_INFO, "Turning motion sensor switiching on");
+    sensorActive = true;
+  } else if (req.indexOf(F("/sensor/off")) != -1) {
+    syslog.log(LOG_INFO, "Turning motion sensor switiching off");
+    sensorActive = false;
+    // Set the variables back to initial values
     iteration = 0;
     aggregattedDistance = 0;
     timesEmpty = 0;
-    lightOn = true;
-    // Set the relay to closed for the manual switch to work
-    digitalWrite(relayPin, HIGH);
-    // Turn the onboard LED off to indicate the switching is off
-    digitalWrite(LED_BUILTIN, HIGH);
-  } else if (req.indexOf(F("/switch/1")) != -1) {
-    syslog.log(LOG_INFO, "Turning relay switiching on");
-    switchActive = true;
-    // Turn the onboard LED on to indicate the switching is on
-    digitalWrite(LED_BUILTIN, LOW);
-  } else if (req.indexOf(F("/status")) != -1) {
-    syslog.logf(LOG_INFO, "Status: relay is %s; light is %s", switchActive ? "active" : "inactive", lightOn ? "on" : "off");
+  } else if (req.indexOf(F("/sensor/status")) != -1) {
+    if (debug == 2) {
+      syslog.logf(LOG_INFO, "Distance Sensor switching status: %s", sensorActive ? "on" : "off");
+    }
+    client.print(sensorActive);
   } else if (req.indexOf(F("/debug/0")) != -1) {
-    syslog.log(LOG_INFO, "Turning debug off");
+    syslog.log(LOG_INFO, "Setting debug level: 0");
     debug = 0;
   } else if (req.indexOf(F("/debug/1")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 1");
+    syslog.log(LOG_INFO, "Setting debug level 1");
     debug = 1;
   } else if (req.indexOf(F("/debug/2")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 2");
+    syslog.log(LOG_INFO, "Setting debug level 2");
     debug = 2;
-  } else if (req.indexOf(F("/light/0")) != -1) {
-    if (lightOn) {
-      syslog.log(LOG_INFO, "Turning light off");
-      digitalWrite(relayPin, LOW);
-      lightOn = false;
-    } else {
-      syslog.log(LOG_INFO, "Light is already off");
-    }
-  } else if (req.indexOf(F("/light/1")) != -1) {
-    if (lightOn) {
-      syslog.log(LOG_INFO, "Light is already on");
-    } else {
-      syslog.log(LOG_INFO, "Turning light on");
-      digitalWrite(relayPin, HIGH);
-      lightOn = false;
-    }
+  } else if (req.indexOf(F("/status")) != -1) {
+    syslog.logf(LOG_INFO, "Status: relay is %s; light is %s", sensorActive ? "active" : "inactive", lightOn ? "on" : "off");
   } else {
-    syslog.log("received invalid request");
-    switchActive = digitalRead(LED_BUILTIN) ? true : false;
-  }
+      syslog.logf("received invalid request: %s", req.c_str());
+      sensorActive = digitalRead(LED_BUILTIN) ? true : false;
+  } 
 
   // read/ignore the rest of the request
   // do not client.flush(): it is for output only, see below
@@ -263,19 +279,4 @@ void loop() {
     // byte by byte is not very efficient
     client.read();
   }
-
-  // Send the response to the client
-  // it is OK for multiple small client.print/write,
-  // because nagle algorithm will group them into one single packet
-  client.print(F("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<!DOCTYPE HTML>\r\n<html>\r\nRelay Switch is now "));
-  client.print((switchActive) ? F("active") : F("inactive"));
-  client.print(F("<br><br>Click <a href='http://"));
-  client.print(WiFi.localIP());
-  client.print(F("/switch/1'>here</a> to switch it on, or <a href='http://"));
-  client.print(WiFi.localIP());
-  client.print(F("/switch/0'>here</a> to switch it off.</html>"));
-
-  // The client will actually be *flushed* then disconnected
-  // when the function returns and 'client' object is destroyed (out-of-scope)
-  // flush = ensure written data are received by the other side
 }
