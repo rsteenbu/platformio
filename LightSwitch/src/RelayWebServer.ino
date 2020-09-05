@@ -144,7 +144,7 @@ void loop() {
     client.print(relayOn);
   } else if (req.indexOf(F("/light/off")) != -1) {
     if (relayOn) {
-      syslog.log(LOG_INFO, "Turning relay off");
+      syslog.log(LOG_INFO, "Turning light off");
       digitalWrite(relayPin, LOW);
       relayOn = false;
     } else {
@@ -154,7 +154,7 @@ void loop() {
     if (relayOn) {
       syslog.log(LOG_INFO, "Relay is already on");
     } else {
-      syslog.log(LOG_INFO, "Turning relay on");
+      syslog.log(LOG_INFO, "Turning light on");
       digitalWrite(relayPin, HIGH);
       relayOn = true;
     }
