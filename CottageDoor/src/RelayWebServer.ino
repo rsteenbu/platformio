@@ -28,8 +28,8 @@ WiFiServer server(80);
 #define SYSLOG_SERVER "ardupi4"
 #define SYSLOG_PORT 514
 // This device info
-#define DEVICE_HOSTNAME "iot-garagedoor"
-#define APP_NAME "garagedoor"
+#define DEVICE_HOSTNAME "iot-cottagedoor"
+#define APP_NAME "door"
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 
@@ -39,24 +39,17 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 int debug = 0;
 
 // Pin for Relay
-//uint8_t RELAY_PIN = 2;       // Use the TX pin to control the relay
-uint8_t RELAY_PIN = D1;
-uint8_t REED_OPEN_PIN = D2;
-uint8_t REED_CLOSED_PIN = D3;
-uint8_t LED_OPEN_PIN = D6;
-uint8_t LED_CLOSED_PIN = D5;
+uint8_t BUILTIN_LED2 = 2;       // Use the (ESP-01) TX pin to control the relay
+uint8_t RELAY_PIN = 1;       // Use the (ESP-01) TX pin to control the relay
+uint8_t REED_PIN = 0;  // according to an instructables doc, pin 0 is GPIO
+// don't use pin 7 (it breaks it)
 
-// DOOR states and status
-int DOOR_OPEN = 0;
-int DOOR_OPENING = 1;
-int DOOR_CLOSED = 2;
-int DOOR_CLOSING = 3;
-int doorStatus;
-
-// Distance Sensor
-// vin == black
-// grnd == white
 bool relayOn = false;
+// DOOR states and status
+int DOOR_OPEN = 1;
+int DOOR_CLOSED = 0;
+int doorStatus;
+int previousDoorStatus;
 
 void setupOTA() {
   ArduinoOTA.onStart([]() {
@@ -97,18 +90,15 @@ void setupOTA() {
 void setup() {
   Serial.begin(115200);
 
-  // Since the other end of the reed switch is connected to ground, we need
-  // to pull-up the reed switch pin internally.
-  pinMode(REED_OPEN_PIN, INPUT_PULLUP);
-  pinMode(LED_OPEN_PIN, OUTPUT);
-  pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
-  pinMode(LED_CLOSED_PIN, OUTPUT);
-
   // prepare LED and Relay PINs
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, LOW);
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  pinMode(BUILTIN_LED2, OUTPUT);
+  digitalWrite(BUILTIN_LED2, LOW);
+
+  // Since the other end of the reed switch is connected to ground, we need
+  // to pull-up the reed switch pin internally.
+  pinMode(REED_PIN, INPUT_PULLUP);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -131,40 +121,25 @@ void setup() {
 void loop() {
   ArduinoOTA.handle();
 
-  int doorOpen = digitalRead(REED_OPEN_PIN); // Check to see of the door is open
-  if (doorOpen == LOW) { // Door detected is in the open position
-    if (doorStatus != DOOR_OPEN) {
-      syslog.log(LOG_INFO, "Garage door detected open");
-      digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
-      doorStatus = DOOR_OPEN;
-    }
-  } else { // Door is not in the open position
-    if (doorStatus == DOOR_OPEN ) {
-      syslog.log(LOG_INFO, "Garage door closing");
-      digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
-      doorStatus = DOOR_CLOSING;
-    }
-  }
-  
-  int doorClosed = digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
-  if (doorClosed == LOW) // Door detected in the closed position
-  {
-    if (doorStatus != DOOR_CLOSED) {
-      syslog.log(LOG_INFO, "Garage door detected closed");
-      digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
-      doorStatus = DOOR_CLOSED;
-    }
-  } else { // Door is not in the closed position
-    if (doorStatus == DOOR_CLOSED) {
-      syslog.log(LOG_INFO, "Garage door opening");
-      digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
-      doorStatus = DOOR_OPENING;
-    }
-  }
-
+  int doorStatus = digitalRead(REED_PIN); // Check the door
   if (debug == 2) {
-    syslog.logf(LOG_INFO, "Reed Open Status: %d; Reed Closed Status: %d", doorOpen, doorClosed);
+    syslog.logf(LOG_INFO, "Status: door is %s", doorStatus == DOOR_OPEN ? "open" : "closed");
   }
+  if (doorStatus == DOOR_OPEN) // Door is open
+  {
+    if (previousDoorStatus != DOOR_OPEN) {
+      syslog.log(LOG_INFO, "Cottage door opened");
+      digitalWrite(BUILTIN_LED2, doorStatus);
+    }
+  } else { // Door is closed
+    if (previousDoorStatus != DOOR_CLOSED) {
+      syslog.log(LOG_INFO, "Cottage door closed");
+      digitalWrite(BUILTIN_LED2, doorStatus);
+    }
+  }
+  previousDoorStatus = doorStatus;
+
+
   // Check if a client has connected
   WiFiClient client = server.available();
   if (!client) {
@@ -193,35 +168,33 @@ void loop() {
   } else if (req.indexOf(F("/debug/2")) != -1) {
     syslog.log(LOG_INFO, "Debug level 2");
     debug = 2;
+  } else if (req.indexOf(F("/door/status")) != -1) {
+    if (debug == 1) {
+      syslog.logf(LOG_INFO, "Door status checked and returned %s", doorStatus == DOOR_OPEN ? "open" : "closed");
+    }
+    client.print(doorStatus);
+  } else if (req.indexOf(F("/relay/status")) != -1) {
+    client.print(relayOn);
+  } else if (req.indexOf(F("/relay/off")) != -1) {
+    if (relayOn) {
+      syslog.log(LOG_INFO, "Turning relay off");
+      digitalWrite(RELAY_PIN, LOW);
+      relayOn = false;
+    } else {
+      syslog.log(LOG_INFO, "Relay is already off");
+    }
+  } else if (req.indexOf(F("/relay/on")) != -1) {
+    if (relayOn) {
+      syslog.log(LOG_INFO, "Relay is already on");
+    } else {
+      syslog.log(LOG_INFO, "Turning relay on");
+      digitalWrite(RELAY_PIN, HIGH);
+      relayOn = true;
+    }
   } else if (req.indexOf(F("/status")) != -1) {
-    switch (doorStatus) {
-      case 0:
-        client.print("OPEN");
-        break;
-      case 1:
-        client.print("OPENING");
-        break;
-      case 2:
-        client.print("CLOSED");
-        break;
-      case 3:
-        client.print("CLOSING");
-        break;
-    }
-  } else if (req.indexOf(F("/operate")) != -1) {
-    syslog.log(LOG_INFO, "Operating garagedoor");
-    if (debug == 1) {
-      syslog.log(LOG_INFO, "Turning garagedoor relay on");
-    }
-    digitalWrite(RELAY_PIN, HIGH);
-    delay(100);
-    if (debug == 1) {
-      syslog.log(LOG_INFO, "Turning garagedoor relay off");
-    }
-    digitalWrite(RELAY_PIN, LOW);
-    client.print("OK");
+    syslog.logf(LOG_INFO, "Status: relay is %s", relayOn ? "on" : "off");
   } else {
-    syslog.logf("Received invalid request: %s", req.c_str());
+    syslog.log("received invalid request");
   }
 
   // read/ignore the rest of the request

@@ -1,17 +1,14 @@
-/*
-    This sketch demonstrates how to set up a simple HTTP-like server.
-    The server will set a GPIO pin depending on the request
-      http://server_ip/gpio/0 will set the GPIO2 low,
-      http://server_ip/gpio/1 will set the GPIO2 high
-    server_ip is the IP address of the ESP8266 module, will be
-    printed to Serial when the module is connected.
-*/
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1351.h>
+#include <Wire.h>
 
+#include <ArduinoOTA.h>
+#include <SPI.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
-#include <ArduinoOTA.h>
 
 #ifndef STASSID
 #define STASSID "***REMOVED***"
@@ -39,24 +36,51 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 int debug = 0;
 
 // Pin for Relay
-uint8_t relayPin = D5;
+uint8_t relayPin = D3;
 
 // Distance Sensor
 // vin == black
 // grnd == white
 const int echoPin = D6; //yellow
-const int trigPin = D7; //green
+const int trigPin = D4; //green
 float duration, distance;
 float aggregattedDistance = 0;
 float averageDistance = 0;
 float distanceToMe = 40.0;
 int iterationsBeforeOff = 100;
 int sampleSize = 20;
-bool sensorActive = false;
+bool sensorActive = true;
 bool lightOn = false;
+int lightLevel = 0;
 
 int iteration = 0;
 int timesEmpty = 0;
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 128 // OLED display height, in pixels
+
+// Declaration for SSD1351 display connected using software SPI (default case):
+#define SCLK_PIN  D5
+#define MOSI_PIN  D7
+#define DC_PIN    D2
+#define CS_PIN    D8
+#define RST_PIN   D1
+
+// Color definitions
+#define	BLACK           0x0000
+#define	BLUE            0x001F
+#define	RED             0xF800
+#define	GREEN           0x07E0
+#define CYAN            0x07FF
+#define MAGENTA         0xF81F
+#define YELLOW          0xFFE0  
+#define WHITE           0xFFFF
+
+//Ucglib_SSD1351_18x128x128_SWSPI ucg(/*sclk=*/ 14, /*data=*/ 13, /*cd=*/ 4, /*cs=*/ 15, /*reset=*/ 5);
+//DisplaySSD1351_128x128x16_SPI display(4,{-1, -1, 5, 0,-1,-1});  // Use this line for ESP8266 Arduino style rst=4, CS=-1, DC=5
+                                                                // And ESP8266 RTOS IDF. GPIO4 is D2, GPIO5 is D1 on NodeMCU boards
+Adafruit_SSD1351 tft = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, CS_PIN, DC_PIN, MOSI_PIN, SCLK_PIN, RST_PIN);  
+//Adafruit_SSD1351 tft = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 
 void setupOTA() {
   ArduinoOTA.onStart([]() {
@@ -94,8 +118,6 @@ void setupOTA() {
 }
 
 void controlLight() {
-  iteration++;
-
   // Check the sensor to see if I'm at my desk
 
   digitalWrite(trigPin, LOW);
@@ -112,13 +134,12 @@ void controlLight() {
 
   // Work with an average over a bunch of samples
   aggregattedDistance = aggregattedDistance + distance;
-  if (iteration == sampleSize) {
+  if (iteration % sampleSize == 0) {
     averageDistance = aggregattedDistance / sampleSize;
     if (debug) {
       syslog.logf("Average distance: %f\"", averageDistance);
     }
     aggregattedDistance = 0;
-    iteration = 0;
 
     if ( !lightOn && averageDistance < distanceToMe) {
       // I'm at my desk, turn the light on
@@ -141,7 +162,6 @@ void controlLight() {
       digitalWrite(relayPin, HIGH);
       lightOn = false;
       // Set the variables back to initial values
-      iteration = 0;
       aggregattedDistance = 0;
       timesEmpty = 0;
     }
@@ -191,14 +211,58 @@ void setup() {
 
   // Print the IP address
   Serial.println(WiFi.localIP());
+
+  tft.begin();
+  tft.fillRect(0, 0, 128, 128, CYAN);
+  delay(100);
+
+  tft.fillScreen(BLACK);
+  tft.setCursor(0,0);
+  tft.setTextColor(WHITE);
+  tft.print("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur adipiscing ante sed nibh tincidunt feugiat. Maecenas enim massa, fringilla sed malesuada et, malesuada sit amet turpis. Sed porttitor neque ut ante pretium vitae malesuada nunc bibendum. Nullam aliquet ultrices massa eu hendrerit. Ut sed nisi lorem. In vestibulum purus a tortor imperdiet posuere. ");
+
+//  ucg.begin(UCG_FONT_MODE_TRANSPARENT);
+//  ucg.begin(UCG_FONT_MODE_SOLID);
+//  ucg.clearScreen();
+
 }
 
 void loop() {
   ArduinoOTA.handle();
 
+  if (iteration == 1) {
+    syslog.log("printing to display");
+		//ucg.setRotate90();
+//		ucg.setFont(ucg_font_ncenR12_tr);
+//		ucg.setColor(255, 255, 255);
+		//ucg.setColor(0, 255, 0);
+//		ucg.setColor(1, 255, 0,0);
+
+//		ucg.setPrintPos(0,25);
+//		ucg.print("Hello World!");
+	}
+
+  // make sure we don't overflow iteration
+  if (iteration == 100000) {
+    iteration = 0;
+  }
+
+  iteration++;
+
+  if (iteration % 1000 == 0) {
+    lightLevel = analogRead(A0); 
+    //airValue = 785
+    // waterValue = 470
+    // soilmoisturepercent = map(soilMoistureValue, airValue, waterValue, 0, 100);
+    if (debug == 1) {
+      syslog.logf("light level: %d", lightLevel);
+    }
+  }
+
   if (sensorActive) {
     controlLight();
   }
+
 
   // Check if a client has connected
   WiFiClient client = server.available();
