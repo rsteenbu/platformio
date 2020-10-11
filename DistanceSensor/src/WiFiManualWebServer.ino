@@ -9,6 +9,7 @@
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
+#include <ezTime.h>
 
 #ifndef STASSID
 #define STASSID "***REMOVED***"
@@ -36,13 +37,24 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 int debug = 0;
 
 // Pin for Relay
-uint8_t relayPin = D3;
+#define RELAY_PIN  D3
+
+// Declaration for SSD1351 display connected using software SPI (default case):
+#define RST_PIN   D1
+#define DC_PIN    D6
+#define SCLK_PIN  D5
+#define MOSI_PIN  D7
+#define CS_PIN    D8
+
+// distance sensory Pins
+//yellow
+#define ECHO_PIN D2
+//green
+#define TRIG_PIN D4
 
 // Distance Sensor
 // vin == black
 // grnd == white
-const int echoPin = D6; //yellow
-const int trigPin = D4; //green
 float duration, distance;
 float aggregattedDistance = 0;
 float averageDistance = 0;
@@ -55,16 +67,12 @@ int lightLevel = 0;
 
 int iteration = 0;
 int timesEmpty = 0;
+int seconds;
+
+Timezone myTZ;
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 128 // OLED display height, in pixels
-
-// Declaration for SSD1351 display connected using software SPI (default case):
-#define SCLK_PIN  D5
-#define MOSI_PIN  D7
-#define DC_PIN    D2
-#define CS_PIN    D8
-#define RST_PIN   D1
 
 // Color definitions
 #define	BLACK           0x0000
@@ -76,11 +84,8 @@ int timesEmpty = 0;
 #define YELLOW          0xFFE0  
 #define WHITE           0xFFFF
 
-//Ucglib_SSD1351_18x128x128_SWSPI ucg(/*sclk=*/ 14, /*data=*/ 13, /*cd=*/ 4, /*cs=*/ 15, /*reset=*/ 5);
-//DisplaySSD1351_128x128x16_SPI display(4,{-1, -1, 5, 0,-1,-1});  // Use this line for ESP8266 Arduino style rst=4, CS=-1, DC=5
-                                                                // And ESP8266 RTOS IDF. GPIO4 is D2, GPIO5 is D1 on NodeMCU boards
-Adafruit_SSD1351 tft = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, CS_PIN, DC_PIN, MOSI_PIN, SCLK_PIN, RST_PIN);  
-//Adafruit_SSD1351 tft = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
+Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, CS_PIN, DC_PIN, MOSI_PIN, SCLK_PIN, RST_PIN);  
+//Adafruit_SSD1351 oled = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 
 void setupOTA() {
   ArduinoOTA.onStart([]() {
@@ -120,13 +125,13 @@ void setupOTA() {
 void controlLight() {
   // Check the sensor to see if I'm at my desk
 
-  digitalWrite(trigPin, LOW);
+  digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(5);
-  digitalWrite(trigPin, HIGH);
+  digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
+  digitalWrite(TRIG_PIN, LOW);
 
-  duration = pulseIn(echoPin, HIGH);
+  duration = pulseIn(ECHO_PIN, HIGH);
   distance = (duration/2)/74.052;
   if (debug == 2) {
     syslog.logf("Iteration: %d; Distance: %f", iteration, distance);
@@ -144,7 +149,7 @@ void controlLight() {
     if ( !lightOn && averageDistance < distanceToMe) {
       // I'm at my desk, turn the light on
       syslog.log(LOG_INFO, "Person detected, turning light on");
-      digitalWrite(relayPin, LOW);
+      digitalWrite(RELAY_PIN, LOW);
       timesEmpty = 0;
       lightOn = true;
     } else {
@@ -159,7 +164,7 @@ void controlLight() {
     // If I've been away for a while, turn the light off
     if (lightOn && timesEmpty > iterationsBeforeOff) {
       syslog.log(LOG_INFO, "Nobody detected, Turning light off");
-      digitalWrite(relayPin, HIGH);
+      digitalWrite(RELAY_PIN, HIGH);
       lightOn = false;
       // Set the variables back to initial values
       aggregattedDistance = 0;
@@ -173,14 +178,14 @@ void setup() {
   Serial.begin(115200);
 
   // prepare LED and Relay PINs
-  pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, HIGH);
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, HIGH);
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
   // prepare the Distance Sensor
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
 
   // Connect to WiFi network
   Serial.println();
@@ -212,35 +217,26 @@ void setup() {
   // Print the IP address
   Serial.println(WiFi.localIP());
 
-  tft.begin();
-  tft.fillRect(0, 0, 128, 128, CYAN);
-  delay(100);
+  //Set the time
+  waitForSync();
+  myTZ.setLocation(F("America/Los_Angeles"));
 
-  tft.fillScreen(BLACK);
-  tft.setCursor(0,0);
-  tft.setTextColor(WHITE);
-  tft.print("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur adipiscing ante sed nibh tincidunt feugiat. Maecenas enim massa, fringilla sed malesuada et, malesuada sit amet turpis. Sed porttitor neque ut ante pretium vitae malesuada nunc bibendum. Nullam aliquet ultrices massa eu hendrerit. Ut sed nisi lorem. In vestibulum purus a tortor imperdiet posuere. ");
-
-//  ucg.begin(UCG_FONT_MODE_TRANSPARENT);
-//  ucg.begin(UCG_FONT_MODE_SOLID);
-//  ucg.clearScreen();
+  //initialize the display
+  oled.begin();
+  oled.fillScreen(BLACK);
+  oled.print("light level\nuptime (s)");
+  oled.fillRect(70, 0, 40, 8, RED);
+  oled.fillRect(70, 9, 40, 8, RED);
 
 }
 
+int prevValues[3];;
+String prevDateTimes[2];
 void loop() {
   ArduinoOTA.handle();
 
-  if (iteration == 1) {
-    syslog.log("printing to display");
-		//ucg.setRotate90();
-//		ucg.setFont(ucg_font_ncenR12_tr);
-//		ucg.setColor(255, 255, 255);
-		//ucg.setColor(0, 255, 0);
-//		ucg.setColor(1, 255, 0,0);
-
-//		ucg.setPrintPos(0,25);
-//		ucg.print("Hello World!");
-	}
+  // call the eztime events to update ntp date when it wants
+  events();
 
   // make sure we don't overflow iteration
   if (iteration == 100000) {
@@ -249,14 +245,63 @@ void loop() {
 
   iteration++;
 
-  if (iteration % 1000 == 0) {
-    lightLevel = analogRead(A0); 
-    //airValue = 785
+  seconds = (int) millis() / 1000;
+//  if (seconds >= prevValues[1] + 1) {
+  if (secondChanged()) {
+    // airValue = 785
     // waterValue = 470
     // soilmoisturepercent = map(soilMoistureValue, airValue, waterValue, 0, 100);
-    if (debug == 1) {
-      syslog.logf("light level: %d", lightLevel);
+    lightLevel = analogRead(A0); 
+    String currDate = myTZ.dateTime("m/d/y");
+    String currTime = myTZ.dateTime("H:i");
+    int currSeconds = (int) myTZ.second();
+
+    oled.setTextSize(0);
+
+    oled.setTextColor(BLACK, RED);
+    oled.setCursor(75,0);
+    oled.print(prevValues[0]);
+    oled.setCursor(75,9);
+    oled.print(prevValues[1]);
+    oled.setTextColor(WHITE, RED);
+    oled.setCursor(75,0);
+    oled.print(lightLevel);
+    oled.setCursor(75,9);
+    oled.print(seconds);
+
+    //print the date
+    if (currDate != prevDateTimes[0]) {
+      oled.setCursor(0,20);
+      oled.setTextColor(BLACK);
+      oled.print(prevDateTimes[0]);
+      oled.setCursor(0,20);
+      oled.setTextColor(WHITE);
+      oled.print(currDate);
     }
+    
+    //print the hour and minute
+    if (currTime != prevDateTimes[1]) {
+      oled.setCursor(60,20);
+      oled.setTextColor(BLACK);
+      oled.print(prevDateTimes[1]);
+      oled.setCursor(60,20);
+      oled.setTextColor(WHITE);
+      oled.print(currTime);
+    } 
+    
+    //print the second
+      oled.setCursor(88,20);
+      oled.setTextColor(BLACK);
+      oled.printf(":%02d", prevValues[2]);
+      oled.setCursor(88,20);
+      oled.setTextColor(WHITE);
+      oled.printf(":%02d", currSeconds);
+
+    prevValues[0] = lightLevel;
+    prevValues[1] = seconds;
+    prevValues[2] = currSeconds;
+    prevDateTimes[0] = currDate;
+    prevDateTimes[1] = currTime;
   }
 
   if (sensorActive) {
@@ -290,13 +335,13 @@ void loop() {
       syslog.log(LOG_INFO, "On requested, but light is already on");
     } else {
       syslog.log(LOG_INFO, "Turning light on as requested");
-      digitalWrite(relayPin, LOW);
+      digitalWrite(RELAY_PIN, LOW);
       lightOn = true;
     }
   } else if (req.indexOf(F("/light/off")) != -1) {
     if (lightOn) {
       syslog.log(LOG_INFO, "Turning light off as requested");
-      digitalWrite(relayPin, HIGH);
+      digitalWrite(RELAY_PIN, HIGH);
       lightOn = false;
     } else {
       syslog.log(LOG_INFO, "Off requested, but light is already off");

@@ -19,8 +19,8 @@ WiFiServer server(80);
 #define SYSLOG_SERVER "ardupi4"
 #define SYSLOG_PORT 514
 // This device info
-#define DEVICE_HOSTNAME "iot-backyardlight"
-#define APP_NAME "light"
+#define DEVICE_HOSTNAME "iot-bootstrap"
+#define APP_NAME "bootstrap"
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 
@@ -29,13 +29,6 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 
 int debug = 0;
 
-// Pin for Relay
-uint8_t relayPin = 1;       // Use the (ESP-01) TX pin to control the relay
-
-// Distance Sensor
-// vin == black
-// grnd == white
-bool relayOn = false;
 
 void setupOTA() {
   ArduinoOTA.onStart([]() {
@@ -70,17 +63,11 @@ void setupOTA() {
     }
   });
   ArduinoOTA.begin();
-  
 }
 
+char msg[40];
 void setup() {
   Serial.begin(115200);
-
-  // prepare LED and Relay PINs
-  pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, LOW);
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -91,7 +78,9 @@ void setup() {
     delay(500);
   }
 
-  syslog.logf(LOG_INFO, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
+  sprintf(msg, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
+  Serial.println(msg);
+  syslog.logf(LOG_INFO, msg);
 
   // Setup OTA Update
   setupOTA();
@@ -121,7 +110,6 @@ void loop() {
   client.println("Connection: close");
   client.println();
 
-  // Check the request and determine what to do with the switch relay
   if (req.indexOf(F("/debug/0")) != -1) {
     syslog.log(LOG_INFO, "Turning debug off");
     debug = 0;
@@ -131,26 +119,8 @@ void loop() {
   } else if (req.indexOf(F("/debug/2")) != -1) {
     syslog.log(LOG_INFO, "Debug level 2");
     debug = 2;
-  } else if (req.indexOf(F("/light/status")) != -1) {
-    client.print(relayOn);
-  } else if (req.indexOf(F("/light/off")) != -1) {
-    if (relayOn) {
-      syslog.log(LOG_INFO, "Turning light off");
-      digitalWrite(relayPin, LOW);
-      relayOn = false;
-    } else {
-      syslog.log(LOG_INFO, "Relay is already off");
-    }
-  } else if (req.indexOf(F("/light/on")) != -1) {
-    if (relayOn) {
-      syslog.log(LOG_INFO, "Relay is already on");
-    } else {
-      syslog.log(LOG_INFO, "Turning light on");
-      digitalWrite(relayPin, HIGH);
-      relayOn = true;
-    }
   } else if (req.indexOf(F("/status")) != -1) {
-    syslog.logf(LOG_INFO, "Status: relay is %s", relayOn ? "on" : "off");
+    syslog.logf(LOG_INFO, "Status: debug level is is %d", debug);
   } else {
     syslog.log("received invalid request");
   }
