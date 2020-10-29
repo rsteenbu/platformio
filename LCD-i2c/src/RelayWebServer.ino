@@ -1,8 +1,8 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
-#include <Syslog.h>
 #include <ArduinoOTA.h>
+#include <Syslog.h>
 #include <ezTime.h>
 
 #include <SPI.h>
@@ -13,23 +13,18 @@
 
 #include <Adafruit_ADS1015.h>
  
-#ifndef STASSID
-#define STASSID "***REMOVED***"
-#define STAPSK  "***REMOVED***"
-#endif
-
 // Create an instance of the server
 // specify the port to listen on as an argument
-const char* ssid = STASSID;
-const char* password = STAPSK;
+const char* ssid = "***REMOVED***";
+const char* password = "***REMOVED***";
 WiFiServer server(80);
 
 // Syslog server connection info
-#define SYSLOG_SERVER "ardupi4"
-#define SYSLOG_PORT 514
+const char* SYSLOG_SERVER = "ardupi4";
+const int SYSLOG_PORT = 514;
 // This device info
-#define DEVICE_HOSTNAME "iot-lcdi2c"
-#define APP_NAME "display"
+const char* DEVICE_HOSTNAME = "iot-lcdi2c";
+const char* APP_NAME = "display";
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 
@@ -40,17 +35,16 @@ int debug = 0;
 Timezone myTZ;
 
 // Pin for Relays
-#define LVLIGHT_PIN 1      // (ESP-01) TX 
-#define IRRIGATION_PIN 3    // (ESP-01) RX pin
+const int  LVLIGHT_PIN = 1;       // (ESP-01) TX 
+const int  IRRIGATION_PIN = 3;    // (ESP-01) RX pin
 bool lvRelayOn = false;
 bool irrigationRealyOn = false;
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+const int SCREEN_WIDTH = 128; // OLED display width, in pixels
+const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
 
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // Adafruit i2c analog interface
 Adafruit_ADS1115 ads(0x48);
@@ -105,8 +99,8 @@ void setup() {
 
 int16_t lightLevel = 0;
 int16_t humidityLevel = 0;
-int dusk = 500;
-int sampleSize = 10;
+int const dusk = 500;
+int const sampleSize = 10;
 int timesDark = 0;
 int timesLight = 0;
 bool lvLightOverride = false;

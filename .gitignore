@@ -1,2 +1,3 @@
 */lib/LCD_I2C/
 .pio
+*.swp
