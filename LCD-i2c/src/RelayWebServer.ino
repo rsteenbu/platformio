@@ -12,13 +12,14 @@
 #include <Adafruit_SSD1306.h>
 
 #include <Adafruit_ADS1015.h>
+
+#include <my_relay.h>
  
 // Create an instance of the server
 // specify the port to listen on as an argument
 const char* ssid = "***REMOVED***";
 const char* password = "***REMOVED***";
 WiFiServer server(80);
-
 // Syslog server connection info
 const char* SYSLOG_SERVER = "ardupi4";
 const int SYSLOG_PORT = 514;
@@ -34,27 +35,55 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 int debug = 0;
 Timezone myTZ;
 
-// Pin for Relays
-const int  LVLIGHT_PIN = 1;       // (ESP-01) TX 
-const int  IRRIGATION_PIN = 3;    // (ESP-01) RX pin
-bool lvRelayOn = false;
-bool irrigationRealyOn = false;
+/*
+class Relay {
+  int pin;
+  public:
+    Relay (int);
+    bool on = false;
+    void setup() {
+      pinMode(pin, OUTPUT);
+      digitalWrite(pin, LOW); // start off
+    }
+    void switchOn() {
+      if (!on) {
+        digitalWrite(pin, HIGH);
+        on = true;
+      }
+    }
+    void switchOff() {
+      if (on) {
+        digitalWrite(pin, LOW);
+        on = false;
+      }
+    }
+    const char* state() {
+      if (on) {
+        return "on";
+      } else {
+        return "off";
+      }
+    }
+};
 
-const int SCREEN_WIDTH = 128; // OLED display width, in pixels
-const int SCREEN_HEIGHT = 64; // OLED display height, in pixels
+Relay::Relay(int pin) {
+  pin = a;
+}
+*/
 
-// Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
-Adafruit_SSD1306 display = Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+Relay lvLights(1);   // (ESP-01) TX 
+Relay irrigation(3); // (ESP-01) RX pin
+
+// instantiate the display
+Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire, -1);
 
 // Adafruit i2c analog interface
 Adafruit_ADS1115 ads(0x48);
 
 void setup() {
   // start out with the relays off
-  pinMode(LVLIGHT_PIN, OUTPUT);
-  digitalWrite(LVLIGHT_PIN, LOW);
-  pinMode(IRRIGATION_PIN, OUTPUT);
-  digitalWrite(IRRIGATION_PIN, LOW);
+  lvLights.setup();
+  irrigation.setup();
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -78,7 +107,7 @@ void setup() {
   myTZ.setLocation(F("America/Los_Angeles"));
   myTZ.setDefault();
 
-  // set I2C pins (SDA = GPIO2, SDL = CPIO0)
+  // set I2C pins (SDA = GPIO2, SDL = GPIO0)
   Wire.begin(2, 0);
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) { // Address 0x3D for 128x64
@@ -129,7 +158,7 @@ void loop() {
 
     if (!lvLightOverride) {
       // lv light control
-      if (!lvRelayOn) {
+      if (!lvLights.on) {
         // if it's dark and not between midnight and 6AM, turn the lights on
         if ((lightLevel < dusk) && ( hour() <= 23 && hour() > 6)) {
           timesDark++;
@@ -138,8 +167,7 @@ void loop() {
           }
           if (timesDark > sampleSize) {
             syslog.log(LOG_INFO, "Turning LV lights on");
-            digitalWrite(LVLIGHT_PIN, HIGH);
-            lvRelayOn = true;
+            lvLights.switchOn();
           }
         } else {
           timesDark = 0;
@@ -153,8 +181,7 @@ void loop() {
           }
           if (timesLight > sampleSize) {
             syslog.log(LOG_INFO, "Turning LV lights off");
-            digitalWrite(LVLIGHT_PIN, LOW);
-            lvRelayOn = false;
+            lvLights.switchOff();
           }
         } else {
           timesLight = 0;
@@ -199,44 +226,24 @@ void loop() {
     syslog.log(LOG_INFO, "Disabling LV light override");
     lvLightOverride = false;
   } else if (req.indexOf(F("/lvlight/status")) != -1) {
-    client.print(lvRelayOn);
+    client.print(lvLights.on);
   } else if (req.indexOf(F("/lvlight/off")) != -1) {
-    if (lvRelayOn) {
-      syslog.log(LOG_INFO, "Turning LV lights off");
-      digitalWrite(LVLIGHT_PIN, LOW);
-      lvRelayOn = false;
-    } else {
-      syslog.log(LOG_INFO, "LV lights are already off");
-    }
+    syslog.log(LOG_INFO, "Turning LV lights off");
+    lvLights.switchOff();
   } else if (req.indexOf(F("/lvlight/on")) != -1) {
-    if (!lvRelayOn) {
-      syslog.log(LOG_INFO, "Turning LV lights on");
-      digitalWrite(LVLIGHT_PIN, HIGH);
-      lvRelayOn = true;
-    } else {
-      syslog.log(LOG_INFO, "LV lights are already on");
-    }
+    syslog.log(LOG_INFO, "Turning LV lights on");
+    lvLights.switchOn();
   } else if (req.indexOf(F("/irrigation/status")) != -1) {
-    client.print(irrigationRealyOn);
+    client.print(irrigation.on);
   } else if (req.indexOf(F("/irrigation/off")) != -1) {
-    if (irrigationRealyOn) {
-      syslog.log(LOG_INFO, "Turning irrigation off");
-      digitalWrite(IRRIGATION_PIN, LOW);
-      irrigationRealyOn = false;
-    } else {
-      syslog.log(LOG_INFO, "Irrigation is already off");
-    }
+    syslog.log(LOG_INFO, "Turning irrigation off");
+    irrigation.switchOff();
   } else if (req.indexOf(F("/irrigation/on")) != -1) {
-    if (!irrigationRealyOn) {
-      syslog.log(LOG_INFO, "Turning irrigation on");
-      digitalWrite(IRRIGATION_PIN, HIGH);
-      irrigationRealyOn = true;
-    } else {
-      syslog.log(LOG_INFO, "Irrigation is already on");
-    }
+    syslog.log(LOG_INFO, "Turning irrigation off");
+    irrigation.switchOn();
   } else if (req.indexOf(F("/status")) != -1) {
     client.printf("{\"switches\": {\"irrigation\": {\"state\":\"%s\"}, \"lvlight\": {\"state\": \"%s\", \"override\": \"%s\"}}, \"sensors\": {\"light\": %d, \"humidity\": %d}, \"debug\": %d}\n", 
-				irrigationRealyOn ? "on" : "off", lvRelayOn ? "on" : "off", lvLightOverride ? "on" : "off", lightLevel, humidityLevel, debug);
+				irrigation.on ? "on" : "off", lvLights.on ? "on" : "off", lvLightOverride ? "on" : "off", lightLevel, humidityLevel, debug);
   } else {
     syslog.log("received invalid request");
   }

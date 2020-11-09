@@ -3,18 +3,19 @@
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
+#include <ezTime.h>
+#include <Adafruit_ADS1015.h>
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
 
-#ifndef STASSID
-#define STASSID "***REMOVED***"
-#define STAPSK  "***REMOVED***"
-#endif
+#include <my_relay.h>
 
 // Create an instance of the server
 // specify the port to listen on as an argument
-const char* ssid = STASSID;
-const char* password = STAPSK;
+const char* ssid = "***REMOVED***";
+const char* password = "***REMOVED***";
 WiFiServer server(80);
-
 // Syslog server connection info
 #define SYSLOG_SERVER "ardupi4"
 #define SYSLOG_PORT 514
@@ -28,59 +29,27 @@ WiFiUDP udpClient;
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 int debug = 0;
+Timezone myTZ;
+// Adafruit i2c analog interface
+Adafruit_ADS1115 ads(0x48);
 
-// Pin for Relay
-uint8_t relayPin = 1;       // Use the (ESP-01) TX pin to control the relay
+// ESP-01 Pins
+const int TX_PIN=1;
+const int RX_PIN=3;
+const int GPIO0_PIN=0;
+const int GPIO2_PIN=2;
 
-// Distance Sensor
-// vin == black
-// grnd == white
-bool relayOn = false;
+// Initialize DHT on TX pin 1
+DHT dht(RX_PIN, DHT22);
 
-void setupOTA() {
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_FS
-      type = "filesystem";
-    }
-
-    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
-  });
-  ArduinoOTA.begin();
-  
-}
+Relay lvLights(TX_PIN);   // (ESP-01) TX 
 
 void setup() {
   Serial.begin(115200);
 
   // prepare LED and Relay PINs
-  pinMode(relayPin, OUTPUT);
-  digitalWrite(relayPin, LOW);
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  lvLights.setup();
+  //pinMode(TX_PIN, FUNCTION_3);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -94,14 +63,42 @@ void setup() {
   syslog.logf(LOG_INFO, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
 
   // Setup OTA Update
-  setupOTA();
+  ArduinoOTA.begin();
+
+  //Set the time and timezone
+  waitForSync();
+  myTZ.setLocation(F("America/Los_Angeles"));
+  myTZ.setDefault();
+
+  // set I2C pins (SDA = GPIO2, SDL = GPIO0)
+  // set I2C pins (SDA = TX, SDL = GPIO0)
+  Wire.begin(GPIO2_PIN /*sda*/, GPIO0_PIN /*sdl*/);
 
   // Start the server
   server.begin();
+  
+  // Start the i2c analog gateway
+  ads.begin();
+
+  dht.begin();
 }
 
+int16_t lightLevel = 0;
+int const dusk = 500;
+bool lvLightOverride = false;
+float humidity;
+float temperature;
 void loop() {
   ArduinoOTA.handle();
+
+  if (secondChanged()) {
+    if (debug == 2) {
+      syslog.log(LOG_INFO, "DEBUG: In secondChanged loop");
+    }
+    lightLevel = ads.readADC_SingleEnded(0);
+    humidity = dht.readHumidity();
+    temperature = dht.readTemperature(true); // Read temperature as Fahrenheit (isFahrenheit = true)
+  } 
 
   // Check if a client has connected
   WiFiClient client = server.available();
@@ -132,25 +129,16 @@ void loop() {
     syslog.log(LOG_INFO, "Debug level 2");
     debug = 2;
   } else if (req.indexOf(F("/light/status")) != -1) {
-    client.print(relayOn);
+    client.print(lvLights.on);
   } else if (req.indexOf(F("/light/off")) != -1) {
-    if (relayOn) {
       syslog.log(LOG_INFO, "Turning light off");
-      digitalWrite(relayPin, LOW);
-      relayOn = false;
-    } else {
-      syslog.log(LOG_INFO, "Relay is already off");
-    }
+      lvLights.switchOff();
   } else if (req.indexOf(F("/light/on")) != -1) {
-    if (relayOn) {
-      syslog.log(LOG_INFO, "Relay is already on");
-    } else {
       syslog.log(LOG_INFO, "Turning light on");
-      digitalWrite(relayPin, HIGH);
-      relayOn = true;
-    }
+      lvLights.switchOn();
   } else if (req.indexOf(F("/status")) != -1) {
-    syslog.logf(LOG_INFO, "Status: relay is %s", relayOn ? "on" : "off");
+    client.printf("{\"switches\": {\"lvlight\": {\"state\": \"%s\", \"override\": \"%s\"}}, \"sensors\": {\"light\": %d, \"temperature\": %.2f, \"humidity\": %.2f}, \"debug\": %d}\n", 
+				lvLights.state(), lvLightOverride ? "on" : "off", lightLevel, temperature, humidity, debug);
   } else {
     syslog.log("received invalid request");
   }

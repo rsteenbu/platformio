@@ -16,6 +16,17 @@ const int MOSI_PIN = D7; //blue     Hardware SPI MOSI = GPIO13
 const int CS_PIN   = D8; //orange   Hardware SPI /CS  = GPIO15 (not used), pull-down 10k to GND
 
 #if ADALIB == 1
+// Color definitions
+#define	BLACK           0x0000
+#define	BLUE            0x001F
+#define	RED             0xF800
+#define	GREEN           0x07E0
+#define CYAN            0x07FF
+#define MAGENTA         0xF81F
+#define YELLOW          0xFFE0  
+#define WHITE           0xFFFF
+
+
 #include <Wire.h>
 #include <Adafruit_SSD1351.h>
 #include <Adafruit_GFX.h>
@@ -25,8 +36,10 @@ const int SCREEN_HEIGHT = 128; // OLED display height, in pixels
 Adafruit_SSD1351 display = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, CS_PIN, DC_PIN, MOSI_PIN, SCLK_PIN, RST_PIN);  
 //Adafruit_SSD1351 display = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 #else
-#include <SSD_13XX.h>
-SSD_13XX display = SSD_13XX(CS_PIN, DC_PIN);
+//#include <FTOLED.h>
+//#include <fonts/SystemFont5x7.h>
+//OLED display(CS_PIN, DC_PIN, RST_PIN);
+//OLED_TextBox box(display);
 #endif
 
 // Create an instance of the server
@@ -85,17 +98,6 @@ int iteration = 0;
 int timesEmpty = 0;
 
 Timezone myTZ;
-
-// Color definitions
-#define	BLACK           0x0000
-#define	BLUE            0x001F
-#define	RED             0xF800
-#define	GREEN           0x07E0
-#define CYAN            0x07FF
-#define MAGENTA         0xF81F
-#define YELLOW          0xFFE0  
-#define WHITE           0xFFFF
-
 
 void controlLight() {
   // Check the sensor to see if I'm at my desk
@@ -205,8 +207,9 @@ void setup() {
   display.setCursor(0,18);
   display.print("uptime:");
 #else
-  display.begin();
-  display.print("Hello World!");
+    display.begin();
+    display.selectFont(SystemFont5x7);
+    display.drawString(6,70,F("System 5x7\nOn Two Lines"),RED,BLACK);
 #endif
 
 }
