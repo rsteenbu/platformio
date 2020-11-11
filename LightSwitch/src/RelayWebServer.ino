@@ -16,17 +16,14 @@
 const char* ssid = "***REMOVED***";
 const char* password = "***REMOVED***";
 WiFiServer server(80);
-// Syslog server connection info
-#define SYSLOG_SERVER "ardupi4"
-#define SYSLOG_PORT 514
+
 // This device info
-#define DEVICE_HOSTNAME "iot-backyardlight"
-#define APP_NAME "light"
+const char* DEVICE_HOSTNAME =  "iot-backyardlight";
+const char* APP_NAME = "light";
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
-
 // Create a new syslog instance with LOG_LOCAL0 facility
-Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+Syslog syslog(udpClient, "ardupi4", 514, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 int debug = 0;
 Timezone myTZ;
@@ -39,17 +36,18 @@ const int RX_PIN=3;
 const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
 
-// Initialize DHT on TX pin 1
-DHT dht(RX_PIN, DHT22);
+const int DHTPIN = GPIO0_PIN;
 
-Relay lvLights(TX_PIN);   // (ESP-01) TX 
+// Initialize DHT on TX pin 1
+DHT dht(DHTPIN, DHT22);
+
+Relay lvLights(GPIO2_PIN);   // (ESP-01) TX 
 
 void setup() {
   Serial.begin(115200);
 
-  // prepare LED and Relay PINs
+  // prepare LED
   lvLights.setup();
-  //pinMode(TX_PIN, FUNCTION_3);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -72,7 +70,7 @@ void setup() {
 
   // set I2C pins (SDA = GPIO2, SDL = GPIO0)
   // set I2C pins (SDA = TX, SDL = GPIO0)
-  Wire.begin(GPIO2_PIN /*sda*/, GPIO0_PIN /*sdl*/);
+  Wire.begin(TX_PIN /*sda*/, RX_PIN /*sdl*/);
 
   // Start the server
   server.begin();
@@ -80,6 +78,11 @@ void setup() {
   // Start the i2c analog gateway
   ads.begin();
 
+//  digitalWrite(DHTPIN, LOW); // sets output to gnd
+//  pinMode(DHTPIN, OUTPUT); // switches power to DHT on
+//  delay(1000); // delay necessary after power up for DHT to stabilize
+  // prepare DHTPIN
+  pinMode(DHTPIN, FUNCTION_3);
   dht.begin();
 }
 

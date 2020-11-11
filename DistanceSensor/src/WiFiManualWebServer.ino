@@ -7,6 +7,8 @@
 #include <Syslog.h>
 #include <ezTime.h>
 
+#include <my_relay.h>
+
 #define ADALIB 1
 
 const int RST_PIN  = D1; //white
@@ -63,7 +65,7 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 int debug = 0;
 
 // Pin for Relay
-int const RELAY_PIN = D3;
+Relay lights(D3);
 
 // distance sensory Pins; vin == black grnd == white
 int const ECHO_PIN = D2;  //yellow
@@ -76,7 +78,6 @@ float const distanceToMe = 40.0;
 int const iterationsBeforeOff = 100;
 int const sampleSize = 20;
 bool sensorActive = true;
-bool lightOn = false;
 
 struct displayValues {
   int uptimeDays = -1;
@@ -123,12 +124,11 @@ void controlLight() {
     }
     aggregattedDistance = 0;
 
-    if ( !lightOn && currValues.averageDistance < distanceToMe) {
+    if ( !lights.on && currValues.averageDistance < distanceToMe) {
       // I'm at my desk, turn the light on
       syslog.log(LOG_INFO, "Person detected, turning light on");
-      digitalWrite(RELAY_PIN, LOW);
+      lights.switchOn();
       timesEmpty = 0;
-      lightOn = true;
     } else {
       // if the lights on, let's make sure I'm really not at my desk
       if (currValues.averageDistance > distanceToMe) {
@@ -139,10 +139,9 @@ void controlLight() {
     }
 
     // If I've been away for a while, turn the light off
-    if (lightOn && timesEmpty > iterationsBeforeOff) {
+    if (lights.on && timesEmpty > iterationsBeforeOff) {
       syslog.log(LOG_INFO, "Nobody detected, Turning light off");
-      digitalWrite(RELAY_PIN, HIGH);
-      lightOn = false;
+      lights.switchOff();
       // Set the variables back to initial values
       aggregattedDistance = 0;
       timesEmpty = 0;
@@ -156,16 +155,15 @@ void setup() {
   pinMode(SCLK_PIN, OUTPUT);
   pinMode(MOSI_PIN, OUTPUT);
 
-
-  // prepare LED and Relay PINs
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH);
+  // prepare LED 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
   // prepare the Distance Sensor
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT);
+
+  lights.setup();
 
   WiFi.mode(WIFI_STA);
   WiFi.hostname(DEVICE_HOSTNAME);
@@ -342,26 +340,16 @@ void loop() {
 
   // Check the request and determine what to do with the switch relay
   if (req.indexOf(F("/light/on")) != -1) {
-    if (lightOn) {
-      syslog.log(LOG_INFO, "On requested, but light is already on");
-    } else {
-      syslog.log(LOG_INFO, "Turning light on as requested");
-      digitalWrite(RELAY_PIN, LOW);
-      lightOn = true;
-    }
+    syslog.log(LOG_INFO, "Turning light on as requested");
+    lights.switchOn();
   } else if (req.indexOf(F("/light/off")) != -1) {
-    if (lightOn) {
-      syslog.log(LOG_INFO, "Turning light off as requested");
-      digitalWrite(RELAY_PIN, HIGH);
-      lightOn = false;
-    } else {
-      syslog.log(LOG_INFO, "Off requested, but light is already off");
-    }
+    syslog.log(LOG_INFO, "Turning light off as requested");
+    lights.switchOff();
   } else if (req.indexOf(F("/light/status")) != -1) {
     if (debug == 2) {
-      syslog.logf(LOG_INFO, "Light status: %s", lightOn ? "on" : "off");
+      syslog.logf(LOG_INFO, "Light status: %s", lights.state());
     }
-    client.print(lightOn);
+    client.print(lights.on);
   } else if (req.indexOf(F("/sensor/on")) != -1) {
     syslog.log(LOG_INFO, "Turning motion sensor switiching on");
     sensorActive = true;
@@ -388,7 +376,7 @@ void loop() {
     debug = 2;
   } else if (req.indexOf(F("/status")) != -1) {
     client.printf("{\"switches\": {\"light\": \"%s\"}, \"sensors\": {\"distance\": {\"state\": \"%s\", \"measurement\": %f}, \"light\": %d}, \"uptime\": \"%d:%02d:%02d:%02d\", \"debug\": %d}\n", 
-        lightOn ? "on" : "off", sensorActive ? "on" : "off", currValues.averageDistance, currValues.lightLevel, currValues.uptimeDays, currValues.uptimeHours, currValues.uptimeMinutes, currValues.uptimeSeconds, debug);
+        lights.state(), sensorActive ? "on" : "off", currValues.averageDistance, currValues.lightLevel, currValues.uptimeDays, currValues.uptimeHours, currValues.uptimeMinutes, currValues.uptimeSeconds, debug);
   } else {
       syslog.logf("received invalid request: %s", req.c_str());
       sensorActive = digitalRead(LED_BUILTIN) ? true : false;
