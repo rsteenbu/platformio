@@ -46,7 +46,7 @@ Relay lvLights(GPIO2_PIN);   // (ESP-01) TX
 void setup() {
   Serial.begin(115200);
 
-  // prepare LED
+  // Setup the Relay
   lvLights.setup();
 
   // Connect to WiFi network

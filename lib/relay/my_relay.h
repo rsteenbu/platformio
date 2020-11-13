@@ -7,7 +7,10 @@ class Relay {
   int onVal, offVal;
 
   public:
-    Relay (int a): pin(a) {}
+    Relay (int a): pin(a) {
+        onVal = HIGH;
+        offVal = LOW;
+    }
     Relay (int a, bool b): pin(a), backwards(b) {
       if (backwards) {
         onVal = LOW;

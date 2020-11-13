@@ -28,14 +28,11 @@ const int CS_PIN   = D8; //orange   Hardware SPI /CS  = GPIO15 (not used), pull-
 #define YELLOW          0xFFE0  
 #define WHITE           0xFFFF
 
-
 #include <Wire.h>
 #include <Adafruit_SSD1351.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_I2CDevice.h>
-const int SCREEN_WIDTH = 128; // OLED display width, in pixels
-const int SCREEN_HEIGHT = 128; // OLED display height, in pixels
-Adafruit_SSD1351 display = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, CS_PIN, DC_PIN, MOSI_PIN, SCLK_PIN, RST_PIN);  
+Adafruit_SSD1351 display = Adafruit_SSD1351(128, 128, CS_PIN, DC_PIN, MOSI_PIN, SCLK_PIN, RST_PIN);  
 //Adafruit_SSD1351 display = Adafruit_SSD1351(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, CS_PIN, DC_PIN, RST_PIN);
 #else
 //#include <FTOLED.h>
