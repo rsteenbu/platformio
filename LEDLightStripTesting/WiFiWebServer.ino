@@ -8,8 +8,8 @@
 #include <FastLED.h>
 
 // WiFi credentials.
-const char* WIFI_SSID = "***REMOVED***";
-const char* WIFI_PASS = "***REMOVED***";
+//const char* WIFI_SSID = "***REMOVED***";
+//const char* WIFI_PASS = "***REMOVED***";
 const char* SYSLOG_SERVER = "ardupi4";
 const int SYSLOG_PORT = 514;
 const char* DEVICE_HOSTNAME = "iot-ledstrip";
@@ -54,12 +54,19 @@ class uptimeDisplay {
 };
 uptimeDisplay currUptimeDisplay;
 
-#define NUM_LEDS 300
-#define DATA_PIN 18
-CRGB leds[NUM_LEDS];
+int ledPin = 14;
+
+#define NUM_LEDS 100
+#define DATA1_PIN 13
+#define DATA2_PIN 27
+CRGB led_strip1[NUM_LEDS];
+CRGB led_strip2[NUM_LEDS];
 
 void setup()
 {
+    pinMode(ledPin, OUTPUT);
+    pinMode(DATA1_PIN, OUTPUT);
+    pinMode(DATA2_PIN, OUTPUT);
     Serial.begin(9600);
     // Giving it a little time because the serial monitor doesn't
     // immediately attach. Want the firmware that's running to
@@ -73,7 +80,9 @@ void setup()
     Serial.println();
     Serial.println();
     Serial.print("Connecting to ");
-    Serial.println(WIFI_SSID);
+    Serial.print(WIFI_SSID);
+    Serial.print(" with password: ");
+    Serial.println(WIFI_PASS);
 
     // Set WiFi to station mode and disconnect from an AP if it was previously connected
     WiFi.mode(WIFI_STA);
@@ -116,11 +125,13 @@ void setup()
   waitForSync();
   myTZ.setLocation(F("America/Los_Angeles"));
 
-  FastLED.addLeds<WS2811, DATA_PIN, RGB>(leds, NUM_LEDS);
+  FastLED.addLeds<WS2811, DATA1_PIN, RGB>(led_strip1, NUM_LEDS);
+  FastLED.addLeds<WS2811, DATA2_PIN, RGB>(led_strip2, NUM_LEDS);
 
 }
 
-int whiteLed = 0;
+int i = 0;
+int trips = 0;
 
 void loop()
 {
@@ -131,24 +142,39 @@ void loop()
 
   if (secondChanged()) {
     currUptimeDisplay.setSeconds();
-//    currValues.uptimeDays    = currValues.secondsUptime / (60*60*24);
-//    currValues.uptimeHours   = (currValues.secondsUptime % (60*60*24)) / (60*60);
-//    currValues.uptimeMinutes = ((currValues.secondsUptime % (60*60*24)) % (60*60)) / 60;
-//   currValues.uptimeSeconds = currValues.secondsUptime % 60;
+    if (currUptimeDisplay.uptimeSeconds() % 2) {
+      digitalWrite(ledPin, HIGH);
+    } else {
+      digitalWrite(ledPin, LOW);
+    }
   }
 
-  if (whiteLed = NUM_LEDS) {
-    whiteLed = 0;
+  EVERY_N_SECONDS( 1 ) {
   }
-  // Turn our current led on to white, then show the leds
-  leds[whiteLed] = CRGB::White;
-  // Show the leds (only one of which is set to white, from above)
-  FastLED.show();
+
+  EVERY_N_MILLISECONDS( 1000 ) {
+    if (i == NUM_LEDS) {
+      i = 0;
+      //trips++;
+    }
+    if (trips % 10) {
+      led_strip1[i] = CRGB::Red;
+      led_strip2[i] = CRGB::Green;
+    } else {
+      led_strip1[i] = CRGB::Green;
+      led_strip2[i] = CRGB::Red;
+    }
+    FastLED.show();
+    i++;
+  }
+
+
+
   // Wait a little bit
-  delay(100);
+  // delay(5000);
   // Turn our current led back to black for the next loop around
-  leds[whiteLed] = CRGB::Black;
-  whiteLed++;
+//  led_strip1[i] = CRGB::Black;
+//  led_strip2[i] = CRGB::Black;
 
 
   // Check if a client has connected
