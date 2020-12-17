@@ -1,12 +1,15 @@
 #include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
+#include "WiFi.h"
+#include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <Syslog.h>
 #include <ezTime.h>
 
 #include <FastLED.h>
 
+// WiFi credentials.
+//const char* WIFI_SSID = "***REMOVED***";
+//const char* WIFI_PASS = "***REMOVED***";
 const char* SYSLOG_SERVER = "ardupi4";
 const int SYSLOG_PORT = 514;
 const char* DEVICE_HOSTNAME = "iot-ledstrip";
@@ -51,14 +54,17 @@ class uptimeDisplay {
 };
 uptimeDisplay currUptimeDisplay;
 
-#define NUM_LEDS 300
-#define DATA1_PIN 5 
-#define DATA2_PIN 14
+int ledPin = 14;
+
+#define NUM_LEDS 100
+#define DATA1_PIN 13
+#define DATA2_PIN 27
 CRGB led_strip1[NUM_LEDS];
-//CRGB led_strip2[NUM_LEDS];
+CRGB led_strip2[NUM_LEDS];
 
 void setup()
 {
+    pinMode(ledPin, OUTPUT);
     pinMode(DATA1_PIN, OUTPUT);
     pinMode(DATA2_PIN, OUTPUT);
     Serial.begin(9600);
@@ -79,7 +85,7 @@ void setup()
     Serial.println(WIFI_PASS);
 
     // Set WiFi to station mode and disconnect from an AP if it was previously connected
-    //WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_STA);
     WiFi.disconnect();
     delay(100);
 
@@ -119,11 +125,8 @@ void setup()
   waitForSync();
   myTZ.setLocation(F("America/Los_Angeles"));
 
-  //FastLED.addLeds<WS2812, DATA1_PIN, GRB>(led_strip1, NUM_LEDS).setCorrection(TypicalSMD5050);
-  FastLED.addLeds<WS2811, DATA1_PIN, GRB>(led_strip1, NUM_LEDS);
-  FastLED.setBrightness(10);
-
-//  FastLED.addLeds<WS2811, DATA2_PIN, RGB>(led_strip2, NUM_LEDS);
+  FastLED.addLeds<WS2811, DATA1_PIN, RGB>(led_strip1, NUM_LEDS);
+  FastLED.addLeds<WS2811, DATA2_PIN, RGB>(led_strip2, NUM_LEDS);
 
 }
 
@@ -137,45 +140,42 @@ void loop()
   // call the eztime events to update ntp date when it wants
   events();
 
-  EVERY_N_SECONDS(5) {
-    if (i % 2) {
-      if (debug) {
-	syslog.logf(LOG_INFO, "Turning %d pin high", DATA2_PIN);
-      }
-      digitalWrite(DATA2_PIN, HIGH);
+  if (secondChanged()) {
+    currUptimeDisplay.setSeconds();
+    if (currUptimeDisplay.uptimeSeconds() % 2) {
+      digitalWrite(ledPin, HIGH);
     } else {
-      if (debug) {
-	syslog.logf(LOG_INFO, "Turning %d pin low", DATA2_PIN);
-      }
-      digitalWrite(DATA2_PIN, LOW);
+      digitalWrite(ledPin, LOW);
     }
   }
 
+  EVERY_N_SECONDS( 1 ) {
+  }
+
   EVERY_N_MILLISECONDS( 1000 ) {
-//    if (i == NUM_LEDS) {
-//      for (i = 0; i < NUM_LEDS; i++) {
-//        led_strip1[i] = CRGB::Black;
-//      }
-//      FastLED.show();
-//      i = 0;
-//      trips++;
- //   }
- //   for (i = 0; i < NUM_LEDS; i++) {
-      led_strip1[0] = CRGB::Green;
-      led_strip1[1] = CRGB::Green;
-//    }
-//    led_strip1[i] = CRGB::Green;
-    FastLED.show();
-//    i++;
-/*
+    if (i == NUM_LEDS) {
+      i = 0;
+      //trips++;
+    }
     if (trips % 10) {
+      led_strip1[i] = CRGB::Red;
       led_strip2[i] = CRGB::Green;
     } else {
       led_strip1[i] = CRGB::Green;
       led_strip2[i] = CRGB::Red;
     }
-*/
+    FastLED.show();
+    i++;
   }
+
+
+
+  // Wait a little bit
+  // delay(5000);
+  // Turn our current led back to black for the next loop around
+//  led_strip1[i] = CRGB::Black;
+//  led_strip2[i] = CRGB::Black;
+
 
   // Check if a client has connected
   WiFiClient client = server.available();

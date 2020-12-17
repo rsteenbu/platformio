@@ -9,8 +9,6 @@
 
 #include <my_relay.h>
 
-#define ADALIB 1
-
 const int RST_PIN  = D1; //white
 const int DC_PIN   = D6; //green    Hardware SPI MISO = GPIO12 (not used)
 const int SCLK_PIN = D5; //yellow   Hardware SPI CLK  = GPIO14
@@ -43,8 +41,6 @@ Adafruit_SSD1351 display = Adafruit_SSD1351(128, 128, CS_PIN, DC_PIN, MOSI_PIN, 
 
 // Create an instance of the server
 // specify the port to listen on as an argument
-const char* ssid = "***REMOVED***";
-const char* password = "***REMOVED***";
 WiFiServer server(80);
 
 // Syslog server connection info
@@ -64,16 +60,12 @@ int debug = 0;
 // Pin for Relay
 Relay lights(D3);
 
-// distance sensory Pins; vin == black grnd == white
-int const ECHO_PIN = D2;  //yellow
-int const TRIG_PIN = D4;  //green
+//int const ECHO_PIN = D2;  //yellow
+//int const TRIG_PIN = D4;  //green
 
-// Distance Sensor
-float duration, distance;
-float aggregattedDistance = 0;
-float const distanceToMe = 40.0;
-int const iterationsBeforeOff = 100;
-int const sampleSize = 20;
+// vin == black grnd == white
+int const PIR_PIN = D2;  //yellow
+int pirState = LOW;  //start with no motion detected
 bool sensorActive = true;
 
 struct displayValues {
@@ -92,60 +84,9 @@ struct displayValues prevValues;
 struct displayValues currValues;
 int secondsUptime;
 
-int iteration = 0;
 int timesEmpty = 0;
 
 Timezone myTZ;
-
-void controlLight() {
-  // Check the sensor to see if I'm at my desk
-
-  digitalWrite(TRIG_PIN, LOW);
-  delayMicroseconds(5);
-  digitalWrite(TRIG_PIN, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-
-  duration = pulseIn(ECHO_PIN, HIGH);
-  distance = (duration/2)/74.052;
-  if (debug == 2) {
-    syslog.logf("Iteration: %d; Distance: %f", iteration, distance);
-  }
-
-  // Work with an average over a bunch of samples
-  aggregattedDistance = aggregattedDistance + distance;
-  if (iteration % sampleSize == 0) {
-    currValues.averageDistance = aggregattedDistance / sampleSize;
-    if (debug) {
-      syslog.logf("Average distance: %f\"", currValues.averageDistance);
-    }
-    aggregattedDistance = 0;
-
-    if ( !lights.on && currValues.averageDistance < distanceToMe) {
-      // I'm at my desk, turn the light on
-      syslog.log(LOG_INFO, "Person detected, turning light on");
-      lights.switchOn();
-      timesEmpty = 0;
-    } else {
-      // if the lights on, let's make sure I'm really not at my desk
-      if (currValues.averageDistance > distanceToMe) {
-        timesEmpty++;
-      } else {
-        timesEmpty = 0;
-      }
-    }
-
-    // If I've been away for a while, turn the light off
-    if (lights.on && timesEmpty > iterationsBeforeOff) {
-      syslog.log(LOG_INFO, "Nobody detected, Turning light off");
-      lights.switchOff();
-      // Set the variables back to initial values
-      aggregattedDistance = 0;
-      timesEmpty = 0;
-    }
-  }
-  delay(10);
-}
 
 void setup() {
   // prepare HW SPI Pins
@@ -156,15 +97,14 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
-  // prepare the Distance Sensor
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
+  // prepare the motion sensor
+  pinMode(PIR_PIN, INPUT);
 
   lights.setup();
 
   WiFi.mode(WIFI_STA);
   WiFi.hostname(DEVICE_HOSTNAME);
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -206,7 +146,6 @@ void setup() {
     display.selectFont(SystemFont5x7);
     display.drawString(6,70,F("System 5x7\nOn Two Lines"),RED,BLACK);
 #endif
-
 }
 
 void loop() {
@@ -214,13 +153,6 @@ void loop() {
 
   // call the eztime events to update ntp date when it wants
   events();
-
-  // make sure we don't overflow iteration
-  if (iteration == 100000) {
-    iteration = 0;
-  }
-
-  iteration++;
 
   if (secondChanged()) {
     secondsUptime = (int) millis() / 1000;
@@ -250,7 +182,6 @@ void loop() {
     display.print(currValues.lightLevel);
     display.setCursor(75,9);
     display.print(currValues.averageDistance);
-
 
     if (currValues.uptimeDays != prevValues.uptimeDays) {
       display.setCursor(56,18);
@@ -308,12 +239,26 @@ void loop() {
     prevValues = currValues;
 
 #endif
+    if (sensorActive) {
+      int val = digitalRead(PIR_PIN);  // read input value from the motion sensor
+      if (val == HIGH) {            // check if the input is HIGH
+	if (pirState == LOW) {
+	  // we have just turned on
+	  syslog.log(LOG_INFO, "Person detected, turning light on");
+	  lights.switchOn();
+	  pirState = HIGH;
+	}
+      } else {
+	if (pirState == HIGH){
+	  syslog.log(LOG_INFO, "Nobody detected, Turning light off");
+	  lights.switchOff();
+	  Serial.println("Motion ended!");
+	  pirState = LOW;
+	}
+      } // val
+    } //sensorActive
+  } //secondsChanged
 
-  }
-
-  if (sensorActive) {
-    controlLight();
-  }
 
   // Check if a client has connected
   WiFiClient client = server.available();
@@ -353,10 +298,6 @@ void loop() {
   } else if (req.indexOf(F("/sensor/off")) != -1) {
     syslog.log(LOG_INFO, "Turning motion sensor switiching off");
     sensorActive = false;
-    // Set the variables back to initial values
-    iteration = 0;
-    aggregattedDistance = 0;
-    timesEmpty = 0;
   } else if (req.indexOf(F("/sensor/status")) != -1) {
     if (debug == 2) {
       syslog.logf(LOG_INFO, "Distance Sensor switching status: %s", sensorActive ? "on" : "off");
