@@ -1,0 +1,1 @@
+{"switches": {"Xmas light": {"state": "off", "override": "off"}, "LV lights": {"state": "off"}, "Irrigation": {"state": "off"}}, "sensors": {"light": 136, "soil moisture": 9, "temperature: 0.000000, "humidty: 0.000000}, "debug": 0}
