@@ -16,37 +16,37 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
-OneWire ds(D7);  // on pin D7 (a 4.7K resistor is necessary)
-DallasTemperature sensors(&ds);
-DeviceAddress frontyardThermometer;
-
 #include <my_relay.h>
 
 // Create an instance of the server
 // specify the port to listen on as an argument
 WiFiServer server(80);
 
-// Syslog server connection info
-#define SYSLOG_SERVER "ardupi4"
-#define SYSLOG_PORT 514
 // This device info
-#define APP_NAME "switch"
 #define JSON_SIZE 400
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 // Create a new syslog instance with LOG_LOCAL0 facility
-Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+#define SYSTEM_APPNAME "system"
+#define LIGHT_APPNAME "lightsensor"
+#define THERMO_APPNAME "thermometer"
+#define MOTION_APPNAME "motionsensor"
+#define XMAS_APPNAME "xmaslights"
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSTEM_APPNAME, LOG_LOCAL0);
 // instantiate the display
 Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire, -1);
 // Adafruit i2c LUX sensor
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
+// Instantiate the timezone
+Timezone myTZ;
+// Thermometer Dallas OneWire
+OneWire ds(D7);  // on pin D7 (a 4.7K resistor is necessary)
+DallasTemperature sensors(&ds);
+DeviceAddress frontyardThermometer;
 
 int debug = 0;
-Timezone myTZ;
-
 char msg[40];
-StaticJsonDocument<200> doc;
 
 // MotionSensor setup
 int const PIR_PIN = D6;
@@ -68,6 +68,7 @@ void setup() {
   irrigation.setup();
   lvLights.setup();
   xmasLights.setup();
+  xmasLights.setScheduleOverride(true);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -109,6 +110,7 @@ void setup() {
   // Clear the buffer
   display.clearDisplay();
 
+  syslog.appName(LIGHT_APPNAME);
   if (!veml.begin()) {
     syslog.log(LOG_INFO, "VEML Sensor not found");
   } else {
@@ -133,10 +135,11 @@ void setup() {
     }
     veml.setLowThreshold(10000);
     veml.setHighThreshold(20000);
-    veml.interruptEnable(true);
+    veml.interruptEnable(false);
   }
 
   // Start up the DallasTemperature library
+  syslog.appName(THERMO_APPNAME);
   sensors.begin();
   if (!sensors.getAddress(frontyardThermometer, 0)) { 
     syslog.log(LOG_INFO, "DS18B20: Unable to find address for Device 0"); 
@@ -148,16 +151,12 @@ void setup() {
 int16_t lightLevel = 0;
 int16_t soilMoistureLevel = 0;
 float temperature = 0;
-float humidity = 0;
 int const dusk = 100;
 int const morningHour = 6;
 int const eveningHour = 23;
-int const sampleSize = 10;
+int const timesToSample = 10;
 int timesDark = 0;
 int timesLight = 0;
-bool irrigationOverride = true;
-bool lvLightsOverride = true;
-bool xmasLightsOverride = true;
 bool displayOn = true;
 
 void loop() {
@@ -170,14 +169,130 @@ void loop() {
     soilMoistureLevel = analogRead(A0);
     lightLevel = veml.readLux();
 
-    uint16_t irq = veml.interruptStatus();
-    if (irq & VEML7700_INTERRUPT_LOW) {
-      syslog.log(LOG_INFO, "** Low IRQ threshold"); 
-    }
-    if (irq & VEML7700_INTERRUPT_HIGH) {
-      syslog.log(LOG_INFO, "** High IRQ threshold"); 
-    }
+    updateDisplay(lightLevel, soilMoistureLevel, temperature);
 
+    controlSchedule(xmasLights, lightLevel);
+  }
+
+  // Check if a client has connected
+  WiFiClient client = server.available();
+  if (!client) {
+    return;
+  }
+
+  // setup a new client
+  client.setTimeout(5000); // default is 1000
+
+  // Read the first line of the request
+  String req = client.readStringUntil('\r');
+
+  // Tell the client we're ok
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+
+  syslog.appName(SYSTEM_APPNAME);
+  if (req.indexOf(F("/debug/0")) != -1) {
+    syslog.log(LOG_INFO, "Turning debug off");
+    debug = 0;
+  } else if (req.indexOf(F("/debug/1")) != -1) {
+    syslog.log(LOG_INFO, "Debug level 1");
+    debug = 1;
+  } else if (req.indexOf(F("/debug/2")) != -1) {
+    syslog.log(LOG_INFO, "Debug level 2");
+    debug = 2;
+    
+// Irrigation
+  } else if (req.indexOf(F("/irrigation/status")) != -1) {
+    client.print(irrigation.on);
+  } else if (req.indexOf(F("/irrigation/override/off")) != -1) {
+      syslog.log(LOG_INFO, "Enabling irrigation schedule");
+      irrigation.setScheduleOverride(false);
+  } else if (req.indexOf(F("/irrigation/override/on")) != -1) {
+      syslog.log(LOG_INFO, "Disabling irrigation schedule");
+      irrigation.setScheduleOverride(true);
+  } else if (req.indexOf(F("/irrigation/off")) != -1) {
+      syslog.log(LOG_INFO, "Turning irrigation off");
+      irrigation.switchOff();
+  } else if (req.indexOf(F("/irrigation/on")) != -1) {
+      syslog.log(LOG_INFO, "Turning irrigation on");
+      irrigation.switchOn();
+
+// Low Voltage Lights
+  } else if (req.indexOf(F("/lvLights/status")) != -1) {
+    client.print(lvLights.on);
+  } else if (req.indexOf(F("/lvLights/override/off")) != -1) {
+      syslog.log(LOG_INFO, "Enabling lvLights schedule");
+      lvLights.setScheduleOverride(false);
+  } else if (req.indexOf(F("/lvLights/override/on")) != -1) {
+      syslog.log(LOG_INFO, "Disabling lvLights schedule");
+      lvLights.setScheduleOverride(true);
+  } else if (req.indexOf(F("/lvLights/off")) != -1) {
+      syslog.log(LOG_INFO, "Turning lvLights off");
+      lvLights.switchOff();
+  } else if (req.indexOf(F("/lvLights/on")) != -1) {
+      syslog.log(LOG_INFO, "Turning lvLights on");
+      lvLights.switchOn();
+
+// xMasLights
+  } else if (req.indexOf(F("/xmasLights/status")) != -1) {
+    client.print(xmasLights.on);
+  } else if (req.indexOf(F("/xmasLights/override/off")) != -1) {
+      syslog.log(LOG_INFO, "Enabling xmasLights schedule");
+      xmasLights.setScheduleOverride(false);
+  } else if (req.indexOf(F("/xmasLights/override/on")) != -1) {
+      syslog.log(LOG_INFO, "Disabling xmasLights schedule");
+      xmasLights.setScheduleOverride(true);
+  } else if (req.indexOf(F("/xmasLights/off")) != -1) {
+      syslog.log(LOG_INFO, "Turning xmasLights off");
+      xmasLights.switchOff();
+  } else if (req.indexOf(F("/xmasLights/on")) != -1) {
+      syslog.log(LOG_INFO, "Turning xmasLights on");
+      xmasLights.switchOn();
+
+  } else if (req.indexOf(F("/status")) != -1) {
+    StaticJsonDocument<JSON_SIZE> doc;
+    JsonObject switches = doc.createNestedObject("switches");
+    switches["irrigation"]["state"] = irrigation.state();
+    switches["irrigation"]["override"] = irrigation.getScheduleOverride();
+    switches["lvLights"]["state"] = lvLights.state();
+    switches["lvLights"]["override"] = lvLights.getScheduleOverride();
+    switches["xmasLights"]["state"] = xmasLights.state();
+    switches["xmasLights"]["override"] = xmasLights.getScheduleOverride();
+    JsonObject sensors = doc.createNestedObject("sensors");
+    sensors["temperature"] = temperature;
+    sensors["lightLevel"] = lightLevel;
+    sensors["soilMoistureLevel"] = soilMoistureLevel;
+    doc["debug"] = debug;
+    doc["displayOn"] = displayOn;
+
+    size_t jsonDocSize = measureJsonPretty(doc);
+    if (jsonDocSize > JSON_SIZE) {
+      client.printf("ERROR: JSON message too long, %d", jsonDocSize);
+      client.println();
+    } else {
+      serializeJsonPretty(doc, client);
+      client.println();
+    }
+  } else {
+    syslog.log("received invalid request");
+  }
+
+  // read/ignore the rest of the request
+  // do not client.flush(): it is for output only, see below
+  while (client.available()) {
+    // byte by byte is not very efficient
+    client.read();
+  }
+
+  // The client will actually be *flushed* then disconnected
+  // when the function returns and 'client' object is destroyed (out-of-scope)
+  // flush = ensure written data are received by the other side
+}
+
+void updateDisplay(int16_t lightLevel, int16_t soilMoistureLevel, float temperature) {
+    syslog.appName(MOTION_APPNAME);
     int pirVal = digitalRead(PIR_PIN);  // read input value from the motion sensor
     if (pirVal == HIGH) {            // check if the input is HIGH
       if (pirState == LOW) {
@@ -212,156 +327,6 @@ void loop() {
       display.display();
       pirState = HIGH;
    }
-
-    if (!xmasLightsOverride) {
-      if (!xmasLights.on) {
-        // if it's dark and not between midnight and 6AM, turn the lights on
-        if ((lightLevel < dusk) && ( hour() <= eveningHour && hour() > morningHour)) {
-          timesDark++;
-          if (debug) {
-            syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
-          }
-          if (timesDark > sampleSize) {
-            syslog.log(LOG_INFO, "Turning Xmas lights on");
-            xmasLights.switchOn();
-          }
-        } else {
-          timesDark = 0;
-        } 
-      } else {
-        // if it's light or between midnight and 6AM, turn the lights off
-        if ((lightLevel >= dusk) || ( hour() >= 0 && hour() <= 6)) {
-          timesLight++;
-          if (debug) {
-            syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
-          }
-          if (timesLight > sampleSize) {
-            syslog.log(LOG_INFO, "Turning Xmas lights off");
-            xmasLights.switchOff();
-          }
-        } else {
-          timesLight = 0;
-        } 
-      }
-    } // xmasLightsOverride
-  }
-
-
-  // Check if a client has connected
-  WiFiClient client = server.available();
-  if (!client) {
-    return;
-  }
-
-  // setup a new client
-  client.setTimeout(5000); // default is 1000
-
-  // Read the first line of the request
-  String req = client.readStringUntil('\r');
-
-  // Tell the client we're ok
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println();
-
-  if (req.indexOf(F("/debug/0")) != -1) {
-    syslog.log(LOG_INFO, "Turning debug off");
-    debug = 0;
-  } else if (req.indexOf(F("/debug/1")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 1");
-    debug = 1;
-  } else if (req.indexOf(F("/debug/2")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 2");
-    debug = 2;
-    
-// Irrigation
-  } else if (req.indexOf(F("/irrigation/status")) != -1) {
-    client.print(irrigation.on);
-  } else if (req.indexOf(F("/irrigation/override/off")) != -1) {
-      syslog.log(LOG_INFO, "Enabling irrigation schedule");
-      irrigationOverride = false;
-  } else if (req.indexOf(F("/irrigation/override/on")) != -1) {
-      syslog.log(LOG_INFO, "Enabling irrigation schedule");
-      irrigationOverride = true;
-  } else if (req.indexOf(F("/irrigation/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning irrigation off");
-      irrigation.switchOff();
-  } else if (req.indexOf(F("/irrigation/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning irrigation on");
-      irrigation.switchOn();
-
-// Low Voltage Lights
-  } else if (req.indexOf(F("/lvLights/status")) != -1) {
-    client.print(lvLights.on);
-  } else if (req.indexOf(F("/lvLights/override/off")) != -1) {
-      syslog.log(LOG_INFO, "Disabling lvLights schedule");
-      lvLightsOverride = false;
-  } else if (req.indexOf(F("/lvLights/override/on")) != -1) {
-      syslog.log(LOG_INFO, "Enabling lvLights schedule");
-      lvLightsOverride = true;
-  } else if (req.indexOf(F("/lvLights/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning lvLights off");
-      lvLights.switchOff();
-  } else if (req.indexOf(F("/lvLights/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning lvLights on");
-      lvLights.switchOn();
-
-// xMasLights
-  } else if (req.indexOf(F("/xmasLights/status")) != -1) {
-    client.print(xmasLights.on);
-  } else if (req.indexOf(F("/xmasLights/override/off")) != -1) {
-      syslog.log(LOG_INFO, "Disabling xmasLights schedule");
-      xmasLightsOverride = false;
-  } else if (req.indexOf(F("/xmasLights/override/on")) != -1) {
-      syslog.log(LOG_INFO, "Enabling xmasLights schedule");
-      xmasLightsOverride = true;
-  } else if (req.indexOf(F("/xmasLights/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning xmasLights off");
-      xmasLights.switchOff();
-  } else if (req.indexOf(F("/xmasLights/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning xmasLights on");
-      xmasLights.switchOn();
-
-  } else if (req.indexOf(F("/status")) != -1) {
-    StaticJsonDocument<JSON_SIZE> doc;
-    JsonObject switches = doc.createNestedObject("switches");
-    switches["irrigation"]["state"] = irrigation.state();
-    switches["irrigation"]["override"] = irrigationOverride;
-    switches["lvLights"]["state"] = lvLights.state();
-    switches["lvLights"]["override"] = lvLightsOverride;
-    switches["xmasLights"]["state"] = xmasLights.state();
-    switches["xmasLights"]["override"] = xmasLightsOverride;
-    JsonObject sensors = doc.createNestedObject("sensors");
-    sensors["temperature"] = temperature;
-    sensors["lightLevel"] = lightLevel;
-    sensors["soilMoistureLevel"] = soilMoistureLevel;
-    doc["debug"] = debug;
-    doc["displayOn"] = displayOn;
-
-    size_t jsonDocSize = measureJsonPretty(doc);
-    if (jsonDocSize > JSON_SIZE) {
-      client.printf("ERROR: JSON message too long, %d", jsonDocSize);
-      client.println();
-//      syslog.log(LOG_INFO, "JSON message too long");
-    } else {
-      serializeJsonPretty(doc, client);
-      client.println();
-    }
-  } else {
-    syslog.log("received invalid request");
-  }
-
-  // read/ignore the rest of the request
-  // do not client.flush(): it is for output only, see below
-  while (client.available()) {
-    // byte by byte is not very efficient
-    client.read();
-  }
-
-  // The client will actually be *flushed* then disconnected
-  // when the function returns and 'client' object is destroyed (out-of-scope)
-  // flush = ensure written data are received by the other side
 }
 
 float getTemperature() {
@@ -370,3 +335,37 @@ float getTemperature() {
   return DallasTemperature::toFahrenheit(tempC); // Converts tempC to Fahrenheit
 }
 
+void controlSchedule(Relay &xmasLights, int16_t lightLevel) {
+  syslog.appName(XMAS_APPNAME);
+  if (!xmasLights.getScheduleOverride()) {
+    if (!xmasLights.on) {
+      // if it's dark and not between midnight and 6AM, turn the lights on
+      if ((lightLevel < dusk) && ( hour() <= eveningHour && hour() > morningHour)) {
+	timesDark++;
+	if (debug) {
+	  syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
+	}
+	if (timesDark > timesToSample) {
+	  syslog.log(LOG_INFO, "Turning Xmas lights on");
+	  xmasLights.switchOn();
+	}
+      } else {
+	timesDark = 0;
+      } 
+    } else {
+      // if it's light or between midnight and 6AM, turn the lights off
+      if ((lightLevel >= dusk) || ( hour() >= 0 && hour() <= 6)) {
+	timesLight++;
+	if (debug) {
+	  syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
+	}
+	if (timesLight > timesToSample) {
+	  syslog.log(LOG_INFO, "Turning Xmas lights off");
+	  xmasLights.switchOff();
+	}
+      } else {
+	timesLight = 0;
+      } 
+    }
+  } // xmasLightsOverride
+}
