@@ -138,8 +138,6 @@ void setup() {
   display.setCursor(0,0);
   display.print("light level");
   display.setCursor(0,9);
-  display.print("distance");
-  display.setCursor(0,18);
   display.print("uptime:");
 #else
     display.begin();
@@ -174,65 +172,61 @@ void loop() {
     display.setTextColor(BLACK, RED);
     display.setCursor(75,0);
     display.print(prevValues.lightLevel);
-    display.setCursor(75,9);
-    display.print(prevValues.averageDistance);
 
     display.setTextColor(WHITE, RED);
     display.setCursor(75,0);
     display.print(currValues.lightLevel);
-    display.setCursor(75,9);
-    display.print(currValues.averageDistance);
 
     if (currValues.uptimeDays != prevValues.uptimeDays) {
-      display.setCursor(56,18);
+      display.setCursor(56,9);
       display.printf("%02d", prevValues.uptimeDays);
-      display.setCursor(56,18);
+      display.setCursor(56,9);
       display.printf("%02d",currValues.uptimeDays);
     }
     if (currValues.uptimeHours != prevValues.uptimeHours) {
-      display.setCursor(68,18);
+      display.setCursor(68,9);
       display.printf(":%02d", prevValues.uptimeHours);
-      display.setCursor(68,18);
+      display.setCursor(68,9);
       display.printf(":%02d",currValues.uptimeHours);
     }
     if (currValues.uptimeMinutes != prevValues.uptimeMinutes) {
-      display.setCursor(86,18);
+      display.setCursor(86,9);
       display.printf(":%02d", prevValues.uptimeMinutes);
-      display.setCursor(86,18);
+      display.setCursor(86,9);
       display.printf(":%02d",currValues.uptimeMinutes);
     }
     if (currValues.uptimeSeconds != prevValues.uptimeSeconds) {
-      display.setCursor(104,18);
+      display.setCursor(104,9);
       display.printf(":%02d", prevValues.uptimeSeconds);
-      display.setCursor(104,18);
+      display.setCursor(104,9);
       display.printf(":%02d",currValues.uptimeSeconds);
     }
 
     //print the date
     if (currValues.date != prevValues.date) {
-      display.setCursor(0,29);
+      display.setCursor(0,18);
       display.setTextColor(BLACK);
       display.print(prevValues.date);
-      display.setCursor(0,29);
+      display.setCursor(0,18);
       display.setTextColor(WHITE);
       display.print(currValues.date);
     }
     
     //print the hour and minute
     if (currValues.time != prevValues.time) {
-      display.setCursor(60,29);
+      display.setCursor(60,18);
       display.setTextColor(BLACK);
       display.print(prevValues.time);
-      display.setCursor(60,29);
+      display.setCursor(60,18);
       display.setTextColor(WHITE);
       display.print(currValues.time);
     } 
     
     //print the second
-    display.setCursor(88,29);
+    display.setCursor(88,18);
     display.setTextColor(BLACK);
     display.printf(":%02d", prevValues.timeSeconds);
-    display.setCursor(88,29);
+    display.setCursor(88,18);
     display.setTextColor(WHITE);
     display.printf(":%02d", currValues.timeSeconds);
 
