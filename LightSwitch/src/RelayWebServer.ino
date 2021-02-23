@@ -12,9 +12,6 @@
 // specify the port to listen on as an argument
 WiFiServer server(80);
 
-// Syslog server connection info
-#define SYSLOG_SERVER "ardupi4"
-#define SYSLOG_PORT 514
 // This device info
 #define APP_NAME "switch"
 #define JSON_SIZE 200

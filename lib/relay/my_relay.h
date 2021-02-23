@@ -22,6 +22,15 @@ class Relay {
     }
 
     bool on = false;
+    bool scheduleOverride = false;
+
+
+    void setScheduleOverride(bool s) {
+      scheduleOverride = s;
+    }
+    bool getScheduleOverride() {
+      return scheduleOverride;
+    }
     void setup() {
       pinMode(pin, OUTPUT);
       digitalWrite(pin, offVal); // start off
