@@ -39,19 +39,113 @@
 */
 
 #include <OctoWS2811.h>
+#include <WiFiEspAT.h>
+#define AT_BAUD_RATE 115200
+#include <Syslog.h>
+
+WiFiServer server(80);
+WiFiUdpSender udpClient;
+
+// Create a new syslog instance with LOG_LOCAL0 facility
+// Syslog server connection info
+const char* SYSLOG_SERVER = "ardupi4";
+const int SYSLOG_PORT = 514;
+// This device info
+const char* DEVICE_HOSTNAME = "iot-teensy01";
+const char* APP_NAME = "octoWS2811";
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 const int ledsPerStrip = 300;
 DMAMEM int displayMemory[ledsPerStrip*6];
 int drawingMemory[ledsPerStrip*6];
-
 const int config = WS2811_GRB | WS2811_800kHz;
-
 OctoWS2811 leds(ledsPerStrip, displayMemory, drawingMemory, config);
 
 void setup() {
+  Serial.begin(9600);
+
+  Serial1.begin(AT_BAUD_RATE);
+  WiFi.init(Serial1);
+  WiFi.disconnect(); // to clear the way. not persistent
+  WiFi.setPersistent(); // set the following WiFi connection as persistent
+  WiFi.endAP(); // to disable default automatic start of persistent AP at startup
+
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    // don't continue
+    while (true);
+  }
+
+  Serial.println();
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(WIFI_SSID);
+
+  int status = WiFi.begin(WIFI_SSID, WIFI_PASS);
+  if (status == WL_CONNECTED) {
+    Serial.println();
+    Serial.println("Connected to WiFi network.");
+    printWifiStatus();
+  } else {
+    WiFi.disconnect(); // remove the WiFi connection
+    Serial.println();
+    Serial.println("Connection to WiFi network failed.");
+  }
+
+
+  Serial.println();
+
+  server.begin();
+
+  IPAddress ip = WiFi.localIP();
+  syslog.logf(LOG_INFO, "Alive! at IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+
+  Serial.println();
+  Serial.println("Connected to WiFi network.");
+  Serial.print("To access the server, enter \"http://");
+  Serial.print(ip);
+  Serial.println("/\" in web browser.");
+
   leds.begin();
   leds.show();
 //  pinMode(DATA_PIN, OUTPUT);
+}
+
+void printWifiStatus() {
+
+  // print the SSID of the network you're attached to:
+  char ssid[33];
+  WiFi.SSID(ssid);
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+
+  uint8_t mac[6];
+  WiFi.macAddress(mac);
+  Serial.print("MAC: ");
+  printMacAddress(mac);
+
+  // print your board's IP address:
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}
+
+void printMacAddress(byte mac[]) {
+  for (int i = 5; i >= 0; i--) {
+    if (mac[i] < 16) {
+      Serial.print("0");
+    }
+    Serial.print(mac[i], HEX);
+    if (i > 0) {
+      Serial.print(":");
+    }
+  }
+  Serial.println();
 }
 
 #define RED    0xFF0000
@@ -90,14 +184,15 @@ void loop() {
 }
 
 
-void colorWipe(int color, int wait)
-{
+void colorWipe(int color, int wait) {
+  int numStrips = 4;
+  int bubbleSize = 299;
   int i = 0;
-  int bubbleSize = 4;
   while (i <= ledsPerStrip) {
     for (int n=0; n < bubbleSize; n++) {
-      leds.setPixel(i + bubbleSize, color);
-      leds.setPixel(i+300 + bubbleSize, color);
+      for (int x=0; x < numStrips; x++) {
+	leds.setPixel(i + ledsPerStrip * x + n, color);
+      }
     }
    delayMicroseconds(wait);
     leds.show();
