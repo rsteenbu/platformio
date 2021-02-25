@@ -34,7 +34,7 @@ const int GPIO2_PIN=2;
 
 char msg[40];
 StaticJsonDocument<200> doc;
-Relay xMasLights(D1);
+Relay xMasLights(TX_PIN);
 
 void setup() {
   Serial.begin(9600);
