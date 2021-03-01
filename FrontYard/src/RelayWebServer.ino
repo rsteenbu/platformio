@@ -32,7 +32,8 @@ WiFiUDP udpClient;
 #define LIGHT_APPNAME "lightsensor"
 #define THERMO_APPNAME "thermometer"
 #define MOTION_APPNAME "motionsensor"
-#define XMAS_APPNAME "xmaslights"
+#define LIGHTSWITCH_APPNAME "lightswitch"
+#define IRRIGATION_APPNAME "irrigation"
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSTEM_APPNAME, LOG_LOCAL0);
 // instantiate the display
 Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire, -1);
@@ -40,22 +41,26 @@ Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire,
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 // Instantiate the timezone
 Timezone myTZ;
-// Thermometer Dallas OneWire
-OneWire ds(D7);  // on pin D7 (a 4.7K resistor is necessary)
-DallasTemperature sensors(&ds);
-DeviceAddress frontyardThermometer;
+
 
 int debug = 0;
 char msg[40];
 
-// MotionSensor setup
+int const SOIL_PIN = A0;
 int const PIR_PIN = D6;
+int const ONEWIRE_PIN = D7;
+// Create the relays
+Relay xmasLights(D3);
+Relay lvLights(D4);
+Relay irrigation(D5);
+
+// MotionSensor setup
 int pirState = LOW;  //start with no motion detected
 
-// Create the relays
-Relay irrigation(D5);
-Relay lvLights(D3);
-Relay xmasLights(D4);
+// Thermometer Dallas OneWire
+OneWire ds(ONEWIRE_PIN);  // on pin D7 (a 4.7K resistor is necessary)
+DallasTemperature sensors(&ds);
+DeviceAddress frontyardThermometer;
 
 void setup() {
   Serial.begin(9600);
@@ -66,9 +71,8 @@ void setup() {
 
   // Setup the Relay
   irrigation.setup();
-  lvLights.setup();
   xmasLights.setup();
-  xmasLights.setScheduleOverride(true);
+  lvLights.setup();
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -153,7 +157,7 @@ int16_t soilMoistureLevel = 0;
 float temperature = 0;
 int const dusk = 100;
 int const morningHour = 6;
-int const eveningHour = 23;
+int const eveningHour = 17;
 int const timesToSample = 10;
 int timesDark = 0;
 int timesLight = 0;
@@ -166,12 +170,12 @@ void loop() {
   if (secondChanged()) {
 
     temperature = getTemperature();
-    soilMoistureLevel = analogRead(A0);
+    soilMoistureLevel = analogRead(SOIL_PIN);
     lightLevel = veml.readLux();
 
     updateDisplay(lightLevel, soilMoistureLevel, temperature);
 
-    controlSchedule(xmasLights, lightLevel);
+    controlLightSchedule(lvLights, lightLevel);
   }
 
   // Check if a client has connected
@@ -215,6 +219,8 @@ void loop() {
   } else if (req.indexOf(F("/irrigation/off")) != -1) {
       syslog.log(LOG_INFO, "Turning irrigation off");
       irrigation.switchOff();
+  } else if (req.indexOf(F("/irrigation/override/status")) != -1) {
+      client.print(irrigation.getScheduleOverride());
   } else if (req.indexOf(F("/irrigation/on")) != -1) {
       syslog.log(LOG_INFO, "Turning irrigation on");
       irrigation.switchOn();
@@ -228,6 +234,8 @@ void loop() {
   } else if (req.indexOf(F("/lvLights/override/on")) != -1) {
       syslog.log(LOG_INFO, "Disabling lvLights schedule");
       lvLights.setScheduleOverride(true);
+  } else if (req.indexOf(F("/lvLights/override/status")) != -1) {
+      client.print(lvLights.getScheduleOverride());
   } else if (req.indexOf(F("/lvLights/off")) != -1) {
       syslog.log(LOG_INFO, "Turning lvLights off");
       lvLights.switchOff();
@@ -239,17 +247,27 @@ void loop() {
   } else if (req.indexOf(F("/xmasLights/status")) != -1) {
     client.print(xmasLights.on);
   } else if (req.indexOf(F("/xmasLights/override/off")) != -1) {
-      syslog.log(LOG_INFO, "Enabling xmasLights schedule");
-      xmasLights.setScheduleOverride(false);
+    syslog.log(LOG_INFO, "Enabling xmasLights schedule");
+    xmasLights.setScheduleOverride(false);
   } else if (req.indexOf(F("/xmasLights/override/on")) != -1) {
-      syslog.log(LOG_INFO, "Disabling xmasLights schedule");
-      xmasLights.setScheduleOverride(true);
+    syslog.log(LOG_INFO, "Disabling xmasLights schedule");
+    xmasLights.setScheduleOverride(true);
+  } else if (req.indexOf(F("/xmasLights/override/status")) != -1) {
+      client.print(xmasLights.getScheduleOverride());
   } else if (req.indexOf(F("/xmasLights/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning xmasLights off");
-      xmasLights.switchOff();
+    syslog.log(LOG_INFO, "Turning xmasLights off");
+    xmasLights.switchOff();
   } else if (req.indexOf(F("/xmasLights/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning xmasLights on");
-      xmasLights.switchOn();
+    syslog.log(LOG_INFO, "Turning xmasLights on");
+    xmasLights.switchOn();
+
+ // Sensors
+  } else if (req.indexOf(F("/sensors/soilMoisture")) != -1) {
+    client.print(soilMoistureLevel);
+  } else if (req.indexOf(F("/sensors/light")) != -1) {
+    client.print(lightLevel);
+  } else if (req.indexOf(F("/sensors/temperatur")) != -1) {
+    client.print(temperature);
 
   } else if (req.indexOf(F("/status")) != -1) {
     StaticJsonDocument<JSON_SIZE> doc;
@@ -276,7 +294,7 @@ void loop() {
       client.println();
     }
   } else {
-    syslog.log("received invalid request");
+    syslog.log(LOG_INFO, "received invalid request");
   }
 
   // read/ignore the rest of the request
@@ -303,7 +321,7 @@ void updateDisplay(int16_t lightLevel, int16_t soilMoistureLevel, float temperat
       }
     } else {
       if (pirState == HIGH){
-	syslog.log(LOG_INFO, "Nobody detected, turning light off");
+	syslog.log(LOG_INFO, "Nobody detected, turning display off");
 	display.ssd1306_command(SSD1306_DISPLAYOFF);
 	pirState = LOW;
 	displayOn = false;
@@ -335,37 +353,57 @@ float getTemperature() {
   return DallasTemperature::toFahrenheit(tempC); // Converts tempC to Fahrenheit
 }
 
-void controlSchedule(Relay &xmasLights, int16_t lightLevel) {
-  syslog.appName(XMAS_APPNAME);
-  if (!xmasLights.getScheduleOverride()) {
-    if (!xmasLights.on) {
+/*
+struct schedule {
+int const dusk = 100;
+int const morningHour = 6;
+int const eveningHour = 23;
+
+}
+
+ontime = 17:00
+offtime = 00:00
+
+
+*/
+
+void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
+  syslog.appName(LIGHTSWITCH_APPNAME);
+  if (!lightSwitch.getScheduleOverride()) {
+    if (!lightSwitch.on) {
       // if it's dark and not between midnight and 6AM, turn the lights on
-      if ((lightLevel < dusk) && ( hour() <= eveningHour && hour() > morningHour)) {
+      if ((lightLevel < dusk) && (hour() > eveningHour || hour() > morningHour)) {
 	timesDark++;
 	if (debug) {
 	  syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
 	}
 	if (timesDark > timesToSample) {
 	  syslog.log(LOG_INFO, "Turning Xmas lights on");
-	  xmasLights.switchOn();
+	  lightSwitch.switchOn();
 	}
       } else {
 	timesDark = 0;
       } 
     } else {
-      // if it's light or between midnight and 6AM, turn the lights off
-      if ((lightLevel >= dusk) || ( hour() >= 0 && hour() <= 6)) {
+      // if it's light or between midnight and 5AM, turn the lights off
+      if ((lightLevel >= dusk) || ( hour() >= 0 && hour() <= morningHour - 2)) {
 	timesLight++;
 	if (debug) {
 	  syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
 	}
 	if (timesLight > timesToSample) {
 	  syslog.log(LOG_INFO, "Turning Xmas lights off");
-	  xmasLights.switchOff();
+	  lightSwitch.switchOff();
 	}
       } else {
 	timesLight = 0;
       } 
     }
-  } // xmasLightsOverride
+  } // Override
 }
+
+void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLevel) {
+  syslog.appName(IRRIGATION_APPNAME);
+   if (!irrigationSwitch.getScheduleOverride()) {
+  
+} 
