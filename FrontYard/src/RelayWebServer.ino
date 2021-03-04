@@ -155,13 +155,9 @@ void setup() {
 int16_t lightLevel = 0;
 int16_t soilMoistureLevel = 0;
 float temperature = 0;
-int const dusk = 100;
-int const morningHour = 6;
-int const eveningHour = 17;
-int const timesToSample = 10;
+bool displayOn = true;
 int timesDark = 0;
 int timesLight = 0;
-bool displayOn = true;
 
 void loop() {
 
@@ -353,51 +349,34 @@ float getTemperature() {
   return DallasTemperature::toFahrenheit(tempC); // Converts tempC to Fahrenheit
 }
 
-/*
-struct schedule {
-int const dusk = 100;
-int const morningHour = 6;
-int const eveningHour = 23;
-
-}
-
-ontime = 17:00
-offtime = 00:00
-
-
-*/
-
 void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
+  int const dusk = 100;
+  int const timesToSample = 10;
+
   syslog.appName(LIGHTSWITCH_APPNAME);
   if (!lightSwitch.getScheduleOverride()) {
-    if (!lightSwitch.on) {
-      // if it's dark and not between midnight and 6AM, turn the lights on
-      if ((lightLevel < dusk) && (hour() > eveningHour || hour() > morningHour)) {
-	timesDark++;
-	if (debug) {
-	  syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
-	}
-	if (timesDark > timesToSample) {
-	  syslog.log(LOG_INFO, "Turning Xmas lights on");
-	  lightSwitch.switchOn();
-	}
-      } else {
-	timesDark = 0;
-      } 
-    } else {
-      // if it's light or between midnight and 5AM, turn the lights off
-      if ((lightLevel >= dusk) || ( hour() >= 0 && hour() <= morningHour - 2)) {
-	timesLight++;
-	if (debug) {
-	  syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
-	}
-	if (timesLight > timesToSample) {
-	  syslog.log(LOG_INFO, "Turning Xmas lights off");
-	  lightSwitch.switchOff();
-	}
-      } else {
-	timesLight = 0;
-      } 
+    // if it's dark, the lights are not on and it's not the middle of the night when no one cares
+    if ( lightLevel < dusk && !lightSwitch.on && !( hour() >= 0 && hour() < 6 ) ) {
+      timesLight = 0;
+      timesDark++;
+      if (debug) {
+	syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
+      }
+      if (timesDark > timesToSample) {
+	syslog.log(LOG_INFO, "Turning lights on");
+	lightSwitch.switchOn();
+      }
+    // if the lights are on and it's light or in the middle of the night, turn them off
+    } else if (lightSwitch.on && ( hour() >= 0 && hour() < 6 )) {
+      timesDark = 0;
+      timesLight++;
+      if (debug) {
+	syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
+      }
+      if (timesLight > timesToSample) {
+	syslog.log(LOG_INFO, "Turning lights off");
+	lightSwitch.switchOff();
+      }
     }
   } // Override
 }
@@ -405,5 +384,6 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
 void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLevel) {
   syslog.appName(IRRIGATION_APPNAME);
    if (!irrigationSwitch.getScheduleOverride()) {
-  
+
+   }
 } 
