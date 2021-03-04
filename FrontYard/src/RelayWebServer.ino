@@ -367,7 +367,7 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
 	lightSwitch.switchOn();
       }
     // if the lights are on and it's light or in the middle of the night, turn them off
-    } else if (lightSwitch.on && ( hour() >= 0 && hour() < 6 )) {
+    } else if (lightSwitch.on && (lightLevel > dusk || ( hour() >= 0 && hour() < 6 ))) {
       timesDark = 0;
       timesLight++;
       if (debug) {
