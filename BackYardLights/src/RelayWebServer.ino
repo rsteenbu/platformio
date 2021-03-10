@@ -53,6 +53,8 @@ Relay lvLights(TX_PIN);
 
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
+bool vemlSensorFound = false;
+bool thermoSensorFound = false;
 void setup() {
   Serial.begin(9600);
   Serial.println("Booting up");
@@ -92,18 +94,22 @@ void setup() {
   // set I2C pins (SDA, SDL)
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
 
-  syslog.appName(THERMO_APPNAME);
-  if (! am2315.begin()) {
-    syslog.log(LOG_INFO, "AM23315 Sensor not found");
-  }
-
   syslog.appName(LIGHT_APPNAME);
-  if (!veml.begin()) {
-    syslog.log(LOG_INFO, "VEML Sensor not found");
-  } else {
-    veml.setGain(VEML7700_GAIN_1);
-    veml.setIntegrationTime(VEML7700_IT_800MS);
+  int attempts = 0; 
+  while (attempts < 10) {
+    if (veml.begin()) {
+      vemlSensorFound = true;
+      syslog.log(LOG_INFO, "VEML Sensor found");
+      break;
+    }
+    syslog.logf(LOG_INFO, "VEML Sensor not found, try %d", attempts);
+    attempts++; 
+    delay(1000);
+  } 
 
+  if (!vemlSensorFound) {
+    syslog.logf(LOG_INFO, "VEML Sensor not found, giving up");
+  } else {
     switch (veml.getGain()) {
       case VEML7700_GAIN_1: syslog.logf(LOG_INFO, "Gain: %s", "1"); break;
       case VEML7700_GAIN_2: syslog.logf(LOG_INFO, "Gain: %s", "2"); break;
@@ -125,6 +131,22 @@ void setup() {
     veml.interruptEnable(false);
   }
 
+  syslog.appName(THERMO_APPNAME);
+  attempts = 0;
+  while (attempts < 10) {
+    if (am2315.begin()) {
+      thermoSensorFound = true;
+      syslog.log(LOG_INFO, "AMS23315 Sensor found!");
+      break;
+    }
+    syslog.logf(LOG_INFO, "AMS23315 Sensor not found, try %d", attempts);
+    attempts++; 
+    delay(1000);
+  } 
+
+  if (!thermoSensorFound) {
+    syslog.logf(LOG_INFO, "AMS23315 Sensor not found, giving up");
+  } 
 }
 
 static time_t now;
@@ -143,10 +165,14 @@ void loop() {
       syslog.logf(LOG_INFO, "seconds changed, now: %d, prev: %d", currSeconds, prevSeconds);
     }
     if ( currSeconds % 5 == 0 ) {
-      lightLevel = veml.readLux();
+      if ( vemlSensorFound ) {
+	lightLevel = veml.readLux();
+      }
       syslog.appName(THERMO_APPNAME);
-      if (! am2315.readTemperatureAndHumidity(&temperature, &humidity)) {
-	syslog.log(LOG_INFO, "Failed to read data from AM2315");
+      if ( thermoSensorFound ) {
+	if (! am2315.readTemperatureAndHumidity(&temperature, &humidity)) {
+	  syslog.log(LOG_INFO, "Failed to read data from AM2315");
+	}
       }
       // convert the temperature to F
       temperature = ((temperature * 9) / 5 + 32);

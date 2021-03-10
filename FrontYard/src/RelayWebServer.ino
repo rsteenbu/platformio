@@ -23,7 +23,7 @@
 WiFiServer server(80);
 
 // This device info
-#define JSON_SIZE 400
+#define JSON_SIZE 450
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -42,6 +42,7 @@ Adafruit_VEML7700 veml = Adafruit_VEML7700();
 // Instantiate the timezone
 Timezone myTZ;
 
+int drySoilMoistureLevel = 387;
 
 int debug = 0;
 char msg[40];
@@ -278,6 +279,7 @@ void loop() {
     sensors["temperature"] = temperature;
     sensors["lightLevel"] = lightLevel;
     sensors["soilMoistureLevel"] = soilMoistureLevel;
+    doc["time"] = myTZ.dateTime("d-M-y H:i:s.v T");
     doc["debug"] = debug;
     doc["displayOn"] = displayOn;
 
@@ -354,36 +356,49 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
   int const timesToSample = 10;
 
   syslog.appName(LIGHTSWITCH_APPNAME);
-  if (!lightSwitch.getScheduleOverride()) {
+  if (lightSwitch.getScheduleOverride()) {
+    return;
+  }
+
     // if it's dark, the lights are not on and it's not the middle of the night when no one cares
-    if ( lightLevel < dusk && !lightSwitch.on && !( hour() >= 0 && hour() < 6 ) ) {
-      timesLight = 0;
-      timesDark++;
-      if (debug) {
-	syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
-      }
-      if (timesDark > timesToSample) {
-	syslog.log(LOG_INFO, "Turning lights on");
-	lightSwitch.switchOn();
-      }
-    // if the lights are on and it's light or in the middle of the night, turn them off
-    } else if (lightSwitch.on && (lightLevel > dusk || ( hour() >= 0 && hour() < 6 ))) {
-      timesDark = 0;
-      timesLight++;
-      if (debug) {
-	syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
-      }
-      if (timesLight > timesToSample) {
-	syslog.log(LOG_INFO, "Turning lights off");
-	lightSwitch.switchOff();
-      }
+  if ( lightLevel < dusk && !lightSwitch.on && !( hour() >= 0 && hour() < 6 ) ) {
+    timesLight = 0;
+    timesDark++;
+    if (debug) {
+      syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
     }
-  } // Override
+    if (timesDark > timesToSample) {
+      syslog.log(LOG_INFO, "Turning lights on");
+      lightSwitch.switchOn();
+    }
+    // if the lights are on and it's light or in the middle of the night, turn them off
+  } else if (lightSwitch.on && (lightLevel > dusk || ( hour() >= 0 && hour() < 6 ))) {
+    timesDark = 0;
+    timesLight++;
+    if (debug) {
+      syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
+    }
+    if (timesLight > timesToSample) {
+      syslog.log(LOG_INFO, "Turning lights off");
+      lightSwitch.switchOff();
+    }
+  }
 }
+
 
 void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLevel) {
   syslog.appName(IRRIGATION_APPNAME);
-   if (!irrigationSwitch.getScheduleOverride()) {
-
+   if (irrigationSwitch.getScheduleOverride()) {
+     return;
    }
+
+  if (soilMoistureLevel >= wet) {
+    if (irrigationSwitch.on) {
+      syslog.log(LOG_INFO, "Turning irrigation off because the soil's wet");
+      irrigationSwitch.switchOff();
+    }
+    retun;
+  }
+
+  // 3 times / week for 15 minutes
 } 
