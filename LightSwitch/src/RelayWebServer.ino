@@ -125,7 +125,10 @@ void loop() {
     JsonObject switches = doc.createNestedObject("switches");
     switches["light"]["state"] = xMasLights.state();
     doc["debug"] = debug;
-    doc["ctime"] = ctime(&now);
+    char timeString[20];
+    struct tm *timeinfo = localtime(&now);
+    strftime (timeString,20,"%D %T",timeinfo);
+    doc["time"] = timeString;
     doc["seconds"] = localtime(&now)->tm_sec;
 
     size_t jsonDocSize = measureJsonPretty(doc);
@@ -151,3 +154,5 @@ void loop() {
   // when the function returns and 'client' object is destroyed (out-of-scope)
   // flush = ensure written data are received by the other side
 }
+
+

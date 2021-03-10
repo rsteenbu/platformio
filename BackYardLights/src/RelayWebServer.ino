@@ -81,13 +81,6 @@ void setup() {
 
   configTime(MYTZ, "pool.ntp.org");
 
-  /* 
-  //Set the time and timezone
-  waitForSync();
-  myTZ.setLocation(F("America/Los_Angeles"));
-  myTZ.setDefault();
-  */
-
   // Start the server
   server.begin();
 
@@ -225,8 +218,10 @@ void loop() {
     sensors["temperature"] = temperature;
     sensors["humidity"] = humidity;
     doc["debug"] = debug;
-    doc["ctime"] = ctime(&now);
-    doc["seconds"] = localtime(&now)->tm_sec;
+    char timeString[20];
+    struct tm *timeinfo = localtime(&now);
+    strftime (timeString,20,"%D %T",timeinfo);
+    doc["time"] = timeString;
 
     if (measureJsonPretty(doc) > JSON_SIZE) {
       client.println("ERROR: JSON message too long");
