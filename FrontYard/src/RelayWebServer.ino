@@ -3,8 +3,12 @@
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
-#include <ezTime.h>
 #include <ArduinoJson.h>
+
+#include <time.h>                       // time() ctime()
+#include <sys/time.h>                   // struct timeval
+#include <coredecls.h>                  // settimeofday_cb()
+#include <TZ.h>
 
 #include <SPI.h>
 #include <Wire.h>
@@ -23,6 +27,7 @@
 WiFiServer server(80);
 
 // This device info
+#define MYTZ TZ_America_Los_Angeles
 #define JSON_SIZE 450
 
 // A UDP instance to let us send and receive packets over UDP
@@ -39,10 +44,9 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSTEM_APP
 Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire, -1);
 // Adafruit i2c LUX sensor
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
-// Instantiate the timezone
-Timezone myTZ;
 
 int drySoilMoistureLevel = 387;
+int wet = 500;
 
 int debug = 0;
 char msg[40];
@@ -91,11 +95,9 @@ void setup() {
 
   // Setup OTA Update
   ArduinoOTA.begin();
-
-  //Set the time and timezone
-  waitForSync();
-  myTZ.setLocation(F("America/Los_Angeles"));
-  myTZ.setDefault();
+ 
+  // set the time
+  configTime(MYTZ, "pool.ntp.org");
 
   // Start the server
   server.begin();
@@ -153,18 +155,22 @@ void setup() {
   }
 }
 
+static time_t now;
 int16_t lightLevel = 0;
 int16_t soilMoistureLevel = 0;
 float temperature = 0;
 bool displayOn = true;
 int timesDark = 0;
 int timesLight = 0;
+int prevSeconds = 0;;
 
 void loop() {
 
   ArduinoOTA.handle();
+  now = time(nullptr);
 
-  if (secondChanged()) {
+  int currSeconds = localtime(&now)->tm_sec;
+  if ( currSeconds != prevSeconds ) {
 
     temperature = getTemperature();
     soilMoistureLevel = analogRead(SOIL_PIN);
@@ -174,6 +180,7 @@ void loop() {
 
     controlLightSchedule(lvLights, lightLevel);
   }
+  prevSeconds = currSeconds;
 
   // Check if a client has connected
   WiFiClient client = server.available();
@@ -279,7 +286,10 @@ void loop() {
     sensors["temperature"] = temperature;
     sensors["lightLevel"] = lightLevel;
     sensors["soilMoistureLevel"] = soilMoistureLevel;
-    doc["time"] = myTZ.dateTime("d-M-y H:i:s.v T");
+    char timeString[20];
+    struct tm *timeinfo = localtime(&now);
+    strftime (timeString,20,"%D %T",timeinfo);
+    doc["time"] = timeString;
     doc["debug"] = debug;
     doc["displayOn"] = displayOn;
 
@@ -328,12 +338,15 @@ void updateDisplay(int16_t lightLevel, int16_t soilMoistureLevel, float temperat
 
     if (displayOn) {
       // print some stuff to the display
+      char timeString[20];
+      struct tm *timeinfo = localtime(&now);
+      strftime (timeString,20,"%D %T",timeinfo);
+
       display.clearDisplay();
       display.setCursor(0,0);
       display.setTextSize(0);
       display.setTextColor(WHITE);
-      display.printf("%02d/%02d/%d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
-      display.println();
+      display.println(timeString);
       display.printf("Light Level: %d", lightLevel);
       display.println();
       display.printf("Soil Moisture: %d", soilMoistureLevel);
@@ -354,6 +367,7 @@ float getTemperature() {
 void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
   int const dusk = 100;
   int const timesToSample = 10;
+  int hour = localtime(&now)->tm_hour;
 
   syslog.appName(LIGHTSWITCH_APPNAME);
   if (lightSwitch.getScheduleOverride()) {
@@ -361,7 +375,7 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
   }
 
     // if it's dark, the lights are not on and it's not the middle of the night when no one cares
-  if ( lightLevel < dusk && !lightSwitch.on && !( hour() >= 0 && hour() < 6 ) ) {
+  if ( lightLevel < dusk && !lightSwitch.on && !( hour >= 0 && hour < 6 ) ) {
     timesLight = 0;
     timesDark++;
     if (debug) {
@@ -372,7 +386,7 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
       lightSwitch.switchOn();
     }
     // if the lights are on and it's light or in the middle of the night, turn them off
-  } else if (lightSwitch.on && (lightLevel > dusk || ( hour() >= 0 && hour() < 6 ))) {
+  } else if (lightSwitch.on && (lightLevel > dusk || ( hour >= 0 && hour < 6 ))) {
     timesDark = 0;
     timesLight++;
     if (debug) {
@@ -397,7 +411,7 @@ void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLeve
       syslog.log(LOG_INFO, "Turning irrigation off because the soil's wet");
       irrigationSwitch.switchOff();
     }
-    retun;
+    return;
   }
 
   // 3 times / week for 15 minutes
