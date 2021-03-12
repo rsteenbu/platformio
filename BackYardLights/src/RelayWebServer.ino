@@ -142,22 +142,19 @@ void setup() {
   } 
 }
 
-static time_t now;
+time_t now;
 int16_t lightLevel = 0;
-int prevSeconds = 0;;
+time_t prevTime = 0;;
 float temperature, humidity = -1;
 void loop() {
   ArduinoOTA.handle();
-  //gettimeofday(&tv, nullptr);
-  //clock_gettime(0, &tp);
+
   now = time(nullptr);
-    
-  int currSeconds = localtime(&now)->tm_sec;
-  if ( currSeconds != prevSeconds ) {
+  if ( now != prevTime ) {
     if ( debug ) {
-      syslog.logf(LOG_INFO, "seconds changed, now: %d, prev: %d", currSeconds, prevSeconds);
+      syslog.logf(LOG_INFO, "seconds changed, now: %ld, prev: %ld", now, prevTime);
     }
-    if ( currSeconds % 5 == 0 ) {
+    if ( now % 5 == 0 ) {
       if ( vemlSensorFound ) {
 	lightLevel = veml.readLux();
       }
@@ -170,9 +167,8 @@ void loop() {
       // convert the temperature to F
       temperature = ((temperature * 9) / 5 + 32);
     }
+    prevTime = now;
   } 
-
-  prevSeconds = currSeconds;
 
   // Check if a client has connected
   WiFiClient client = server.available();

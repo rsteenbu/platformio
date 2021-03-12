@@ -155,32 +155,32 @@ void setup() {
   }
 }
 
-static time_t now;
 int16_t lightLevel = 0;
 int16_t soilMoistureLevel = 0;
 float temperature = 0;
 bool displayOn = true;
 int timesDark = 0;
 int timesLight = 0;
-int prevSeconds = 0;;
+time_t now;
+time_t prevTime = 0;;
 
 void loop() {
 
   ArduinoOTA.handle();
+
   now = time(nullptr);
+  if ( now != prevTime ) {
+    if ( now % 5 == 0 ) {
+      temperature = getTemperature();
+      soilMoistureLevel = analogRead(SOIL_PIN);
+      lightLevel = veml.readLux();
 
-  int currSeconds = localtime(&now)->tm_sec;
-  if ( currSeconds != prevSeconds ) {
+      updateDisplay(lightLevel, soilMoistureLevel, temperature);
 
-    temperature = getTemperature();
-    soilMoistureLevel = analogRead(SOIL_PIN);
-    lightLevel = veml.readLux();
-
-    updateDisplay(lightLevel, soilMoistureLevel, temperature);
-
-    controlLightSchedule(lvLights, lightLevel);
+      controlLightSchedule(lvLights, lightLevel);
+    }
+    prevTime = now;
   }
-  prevSeconds = currSeconds;
 
   // Check if a client has connected
   WiFiClient client = server.available();
@@ -374,7 +374,7 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
     return;
   }
 
-    // if it's dark, the lights are not on and it's not the middle of the night when no one cares
+  // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
   if ( lightLevel < dusk && !lightSwitch.on && !( hour >= 0 && hour < 6 ) ) {
     timesLight = 0;
     timesDark++;
@@ -385,8 +385,10 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
       syslog.log(LOG_INFO, "Turning lights on");
       lightSwitch.switchOn();
     }
-    // if the lights are on and it's light or in the middle of the night, turn them off
-  } else if (lightSwitch.on && (lightLevel > dusk || ( hour >= 0 && hour < 6 ))) {
+  }
+
+  // Switch off criteria: the lights are on and either it's light or it's in the middle of the night
+  if (lightSwitch.on && (lightLevel > dusk || ( hour >= 0 && hour < 6 ))) {
     timesDark = 0;
     timesLight++;
     if (debug) {
@@ -401,11 +403,17 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
 
 
 void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLevel) {
+  struct tm *timeinfo = localtime(&now);
+  int hour = timeinfo->tm_hour;
+  int minute = timeinfo->tm_min;
+  int weekDay = timeinfo->tm_wday;
+
   syslog.appName(IRRIGATION_APPNAME);
    if (irrigationSwitch.getScheduleOverride()) {
      return;
    }
 
+  // Don't run the irrigation if it's wet outside
   if (soilMoistureLevel >= wet) {
     if (irrigationSwitch.on) {
       syslog.log(LOG_INFO, "Turning irrigation off because the soil's wet");
@@ -414,5 +422,19 @@ void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLeve
     return;
   }
 
-  // 3 times / week for 15 minutes
+  // 4 times / week for 15 minutes
+  if (!irrigationSwitch.on) {
+    if (weekDay == 0 || weekDay == 3 || weekDay == 5 || weekDay == 7) {
+      if ( hour == 8 && minute == 0 ) {
+	syslog.log(LOG_INFO, "Turning irrigation on");
+	irrigationSwitch.switchOn();
+
+      }
+    }
+  } else if (now - irrigationSwitch.onTime > (60 * 15))  {
+	syslog.log(LOG_INFO, "Turning irrigation off");
+	irrigationSwitch.switchOff();
+  }
+
+
 } 
