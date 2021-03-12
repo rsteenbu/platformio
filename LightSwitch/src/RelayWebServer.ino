@@ -39,14 +39,14 @@ const int GPIO2_PIN=2;
 
 char msg[40];
 StaticJsonDocument<200> doc;
-Relay xMasLights(TX_PIN);
+Relay lightSwitch(TX_PIN);
 
 void setup() {
   Serial.begin(9600);
   Serial.println("Booting up");
 
   // Setup the Relay
-  xMasLights.setup();
+  lightSwitch.setup();
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -66,13 +66,6 @@ void setup() {
   ArduinoOTA.begin();
 
   configTime(MYTZ, "pool.ntp.org");
-
-  /* 
-  //Set the time and timezone
-  waitForSync();
-  myTZ.setLocation(F("America/Los_Angeles"));
-  myTZ.setDefault();
-  */
 
   // Start the server
   server.begin();
@@ -113,23 +106,28 @@ void loop() {
     syslog.log(LOG_INFO, "Debug level 2");
     debug = 2;
   } else if (req.indexOf(F("/light/status")) != -1) {
-    client.print(xMasLights.on);
+    client.print(lightSwitch.on);
   } else if (req.indexOf(F("/light/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning light off");
-      xMasLights.switchOff();
+      lightSwitch.switchOff();
+      syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch.offTime);
   } else if (req.indexOf(F("/light/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning light on");
-      xMasLights.switchOn();
+      lightSwitch.switchOn();
+      syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch.onTime);
   } else if (req.indexOf(F("/status")) != -1) {
     StaticJsonDocument<JSON_SIZE> doc;
     JsonObject switches = doc.createNestedObject("switches");
-    switches["light"]["state"] = xMasLights.state();
+    switches["light"]["state"] = lightSwitch.state();
     doc["debug"] = debug;
+
     char timeString[20];
     struct tm *timeinfo = localtime(&now);
     strftime (timeString,20,"%D %T",timeinfo);
     doc["time"] = timeString;
-    doc["seconds"] = localtime(&now)->tm_sec;
+    doc["seconds"] = timeinfo->tm_sec;
+    doc["wday"] = timeinfo->tm_wday;
+    doc["mktime"] = mktime(timeinfo);
+    doc["now"] = now;
+
 
     size_t jsonDocSize = measureJsonPretty(doc);
     if (jsonDocSize > JSON_SIZE) {

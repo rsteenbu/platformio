@@ -1,5 +1,10 @@
 #ifndef RELAY_H
 #define RELAY_H
+#define MYTZ TZ_America_Los_Angeles
+#include <time.h>                       // time() ctime()
+#include <sys/time.h>                   // struct timeval
+#include <coredecls.h>                  // settimeofday_cb()
+#include <TZ.h>
 
 class Relay {
   int pin;
@@ -23,7 +28,8 @@ class Relay {
 
     bool on = false;
     bool scheduleOverride = false;
-
+    time_t onTime = 0;
+    time_t offTime = 0;
 
     void setScheduleOverride(bool s) {
       scheduleOverride = s;
@@ -34,17 +40,21 @@ class Relay {
     void setup() {
       pinMode(pin, OUTPUT);
       digitalWrite(pin, offVal); // start off
+      configTime(MYTZ, "pool.ntp.org");
+      offTime = time(nullptr);
     }
     void switchOn() {
       if (!on) {
         digitalWrite(pin, onVal);
         on = true;
+	onTime = time(nullptr);
       }
     }
     void switchOff() {
       if (on) {
         digitalWrite(pin, offVal);
         on = false;
+	offTime = time(nullptr);
       }
     }
     const char* state() {
