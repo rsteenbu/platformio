@@ -66,5 +66,16 @@ class Relay {
     }
 };
 
+class TimerRelay: public Relay {
+  public:
+    int runTime;
+    TimerRelay(int a): Relay(a) {}
+
+    void setRuntime(int a) {
+      runTime = a;
+    }
+};
+
+
 #endif
 

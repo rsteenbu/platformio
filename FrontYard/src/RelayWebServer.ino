@@ -45,8 +45,8 @@ Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire,
 // Adafruit i2c LUX sensor
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
-int drySoilMoistureLevel = 387;
-int wet = 500;
+int const minSoilMoistureLevel = 300;
+int const maxSoilMoistureLevel = 700;
 
 int debug = 0;
 char msg[40];
@@ -155,8 +155,8 @@ void setup() {
   }
 }
 
+float soilMoisturePercentage;
 int16_t lightLevel = 0;
-int16_t soilMoistureLevel = 0;
 float temperature = 0;
 bool displayOn = true;
 int timesDark = 0;
@@ -165,19 +165,32 @@ time_t now;
 time_t prevTime = 0;;
 
 void loop() {
-
   ArduinoOTA.handle();
 
   now = time(nullptr);
   if ( now != prevTime ) {
     if ( now % 5 == 0 ) {
       temperature = getTemperature();
-      soilMoistureLevel = analogRead(SOIL_PIN);
+      float soilMoistureLevel = analogRead(SOIL_PIN);
+      if (soilMoistureLevel < minSoilMoistureLevel) {
+	soilMoistureLevel = minSoilMoistureLevel;
+      }
+      if (soilMoistureLevel > maxSoilMoistureLevel) {
+	soilMoistureLevel = maxSoilMoistureLevel;
+      }
+      soilMoisturePercentage = (1 - ((soilMoistureLevel - minSoilMoistureLevel) / (maxSoilMoistureLevel - minSoilMoistureLevel))) * 100;
+      if (debug) {
+	syslog.logf(LOG_INFO, "sml: %f; smp: %f", soilMoistureLevel, soilMoisturePercentage);
+      }
+
       lightLevel = veml.readLux();
 
-      updateDisplay(lightLevel, soilMoistureLevel, temperature);
+      updateDisplay(lightLevel, soilMoisturePercentage, temperature);
 
       controlLightSchedule(lvLights, lightLevel);
+
+      controlIrrigationSchedule(irrigation, soilMoisturePercentage);
+
     }
     prevTime = now;
   }
@@ -267,10 +280,10 @@ void loop() {
 
  // Sensors
   } else if (req.indexOf(F("/sensors/soilMoisture")) != -1) {
-    client.print(soilMoistureLevel);
+    client.print(soilMoisturePercentage);
   } else if (req.indexOf(F("/sensors/light")) != -1) {
     client.print(lightLevel);
-  } else if (req.indexOf(F("/sensors/temperatur")) != -1) {
+  } else if (req.indexOf(F("/sensors/temperature")) != -1) {
     client.print(temperature);
 
   } else if (req.indexOf(F("/status")) != -1) {
@@ -285,7 +298,7 @@ void loop() {
     JsonObject sensors = doc.createNestedObject("sensors");
     sensors["temperature"] = temperature;
     sensors["lightLevel"] = lightLevel;
-    sensors["soilMoistureLevel"] = soilMoistureLevel;
+    sensors["soilMoisturePercentage"] = soilMoisturePercentage;
     char timeString[20];
     struct tm *timeinfo = localtime(&now);
     strftime (timeString,20,"%D %T",timeinfo);
@@ -317,7 +330,7 @@ void loop() {
   // flush = ensure written data are received by the other side
 }
 
-void updateDisplay(int16_t lightLevel, int16_t soilMoistureLevel, float temperature) {
+void updateDisplay(int16_t lightLevel, float soilMoisturePercentage, float temperature) {
     syslog.appName(MOTION_APPNAME);
     int pirVal = digitalRead(PIR_PIN);  // read input value from the motion sensor
     if (pirVal == HIGH) {            // check if the input is HIGH
@@ -349,7 +362,7 @@ void updateDisplay(int16_t lightLevel, int16_t soilMoistureLevel, float temperat
       display.println(timeString);
       display.printf("Light Level: %d", lightLevel);
       display.println();
-      display.printf("Soil Moisture: %d", soilMoistureLevel);
+      display.printf("Soil Moisture: %0.2f", soilMoisturePercentage);
       display.println();
       display.printf("Temperature: %2.2f", temperature);
       display.println();
@@ -401,12 +414,12 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
   }
 }
 
-
-void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLevel) {
+void controlIrrigationSchedule(Relay &irrigationSwitch, float soilMoisturePercentage) {
   struct tm *timeinfo = localtime(&now);
   int hour = timeinfo->tm_hour;
   int minute = timeinfo->tm_min;
   int weekDay = timeinfo->tm_wday;
+  int monthDay = timeinfo->tm_mday;
 
   syslog.appName(IRRIGATION_APPNAME);
    if (irrigationSwitch.getScheduleOverride()) {
@@ -414,7 +427,7 @@ void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLeve
    }
 
   // Don't run the irrigation if it's wet outside
-  if (soilMoistureLevel >= wet) {
+  if (soilMoisturePercentage >= 20) {
     if (irrigationSwitch.on) {
       syslog.log(LOG_INFO, "Turning irrigation off because the soil's wet");
       irrigationSwitch.switchOff();
@@ -435,6 +448,6 @@ void controlIrrigationSchedule(Relay &irrigationSwitch, int16_t soilMoistureLeve
 	syslog.log(LOG_INFO, "Turning irrigation off");
 	irrigationSwitch.switchOff();
   }
-
-
 } 
+
+
