@@ -39,7 +39,9 @@ const int GPIO2_PIN=2;
 
 char msg[40];
 StaticJsonDocument<200> doc;
-Relay lightSwitch(TX_PIN);
+
+//Relay lightSwitch(TX_PIN);
+TimerRelay lightSwitch(TX_PIN);
 
 void setup() {
   Serial.begin(9600);
@@ -61,6 +63,10 @@ void setup() {
   sprintf(msg, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
   Serial.println(msg);
   syslog.logf(LOG_INFO, msg);
+
+
+  lightSwitch.setRuntime(15);
+  syslog.logf(LOG_INFO, "lightSwitch runTime: %d", lightSwitch.runTime);
 
   // Setup OTA Update
   ArduinoOTA.begin();
