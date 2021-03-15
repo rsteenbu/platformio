@@ -69,10 +69,21 @@ class Relay {
 class TimerRelay: public Relay {
   public:
     int runTime;
+    int startHour;
+    int startmin;
+    int startDays[8];
     TimerRelay(int a): Relay(a) {}
 
     void setRuntime(int a) {
       runTime = a;
+    }
+    
+    void setStartTime(int a, int b, int c[8]) {
+      startHour = a;
+      startmin = b;
+    }
+
+    void handle() {
     }
 };
 

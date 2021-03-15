@@ -77,12 +77,17 @@ void setup() {
   server.begin();
 }
 
-static time_t now;
+time_t now;
+time_t prevTime = 0;;
 void loop() {
   ArduinoOTA.handle();
-  //gettimeofday(&tv, nullptr);
-  //clock_gettime(0, &tp);
+
   now = time(nullptr);
+  if ( now != prevTime ) {
+    if ( now % 5 == 0 ) {
+    }
+  }
+  prevTime = now;
 
   // Check if a client has connected
   WiFiClient client = server.available();

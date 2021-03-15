@@ -49,7 +49,7 @@ const int GPIO2_PIN=2;
 
 char msg[40];
 StaticJsonDocument<200> doc;
-Relay lvLights(TX_PIN);
+Relay lvLights(TX_PIN, true);
 
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
@@ -188,6 +188,7 @@ void loop() {
   client.println("Connection: close");
   client.println();
 
+  syslog.appName(SYSTEM_APPNAME);
   if (req.indexOf(F("/debug/0")) != -1) {
     syslog.log(LOG_INFO, "Turning debug off");
     debug = 0;
@@ -197,14 +198,25 @@ void loop() {
   } else if (req.indexOf(F("/debug/2")) != -1) {
     syslog.log(LOG_INFO, "Debug level 2");
     debug = 2;
-  } else if (req.indexOf(F("/light/status")) != -1) {
+
+  // low voltage lights
+  } else if (req.indexOf(F("/lvLights/status")) != -1) {
     client.print(lvLights.on);
-  } else if (req.indexOf(F("/light/off")) != -1) {
+  } else if (req.indexOf(F("/lvLights/off")) != -1) {
       syslog.log(LOG_INFO, "Turning light off");
       lvLights.switchOff();
-  } else if (req.indexOf(F("/light/on")) != -1) {
+  } else if (req.indexOf(F("/lvLights/on")) != -1) {
       syslog.log(LOG_INFO, "Turning light on");
       lvLights.switchOn();
+
+ // Sensors
+  } else if (req.indexOf(F("/sensors/humidity")) != -1) {
+    client.print(humidity);
+  } else if (req.indexOf(F("/sensors/light")) != -1) {
+    client.print(lightLevel);
+  } else if (req.indexOf(F("/sensors/temperature")) != -1) {
+    client.print(temperature);
+
   } else if (req.indexOf(F("/status")) != -1) {
     StaticJsonDocument<JSON_SIZE> doc;
     JsonObject switches = doc.createNestedObject("switches");
@@ -227,7 +239,7 @@ void loop() {
       client.println();
     }
   } else {
-    syslog.log("received invalid request");
+    syslog.log(LOG_INFO, "received invalid request");
   }
 
   // read/ignore the rest of the request
