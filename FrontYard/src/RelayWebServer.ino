@@ -171,17 +171,8 @@ void loop() {
   if ( now != prevTime ) {
     if ( now % 5 == 0 ) {
       temperature = getTemperature();
-      float soilMoistureLevel = analogRead(SOIL_PIN);
-      if (soilMoistureLevel < minSoilMoistureLevel) {
-	soilMoistureLevel = minSoilMoistureLevel;
-      }
-      if (soilMoistureLevel > maxSoilMoistureLevel) {
-	soilMoistureLevel = maxSoilMoistureLevel;
-      }
-      soilMoisturePercentage = (1 - ((soilMoistureLevel - minSoilMoistureLevel) / (maxSoilMoistureLevel - minSoilMoistureLevel))) * 100;
-      if (debug) {
-	syslog.logf(LOG_INFO, "sml: %f; smp: %f", soilMoistureLevel, soilMoisturePercentage);
-      }
+
+      soilMoisturePercentage = getSoilMoisturePercent();
 
       lightLevel = veml.readLux();
 
@@ -330,6 +321,24 @@ void loop() {
   // flush = ensure written data are received by the other side
 }
 
+float getSoilMoisturePercent( ) {
+      float soilMoistureLevel = analogRead(SOIL_PIN);
+
+      if (soilMoistureLevel < minSoilMoistureLevel) {
+	soilMoistureLevel = minSoilMoistureLevel;
+      }
+      if (soilMoistureLevel > maxSoilMoistureLevel) {
+	soilMoistureLevel = maxSoilMoistureLevel;
+      }
+      float soilMoisturePercentage = (1 - ((soilMoistureLevel - minSoilMoistureLevel) / (maxSoilMoistureLevel - minSoilMoistureLevel))) * 100;
+
+      if (debug) {
+	syslog.logf(LOG_INFO, "sml: %f; smp: %f", soilMoistureLevel, soilMoisturePercentage);
+      }
+
+      return soilMoisturePercentage;
+}
+
 void updateDisplay(int16_t lightLevel, float soilMoisturePercentage, float temperature) {
     syslog.appName(MOTION_APPNAME);
     int pirVal = digitalRead(PIR_PIN);  // read input value from the motion sensor
@@ -419,7 +428,7 @@ void controlIrrigationSchedule(Relay &irrigationSwitch, float soilMoisturePercen
   int hour = timeinfo->tm_hour;
   int minute = timeinfo->tm_min;
   int weekDay = timeinfo->tm_wday;
-  int monthDay = timeinfo->tm_mday;
+  //int monthDay = timeinfo->tm_mday;
 
   syslog.appName(IRRIGATION_APPNAME);
    if (irrigationSwitch.getScheduleOverride()) {

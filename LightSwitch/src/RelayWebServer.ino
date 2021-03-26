@@ -4,6 +4,7 @@
 #include <Syslog.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
+#include <Array.h>
 
 #include <my_relay.h>
 
@@ -21,6 +22,9 @@ WiFiServer server(80);
 // This device info
 #define APP_NAME "switch"
 #define JSON_SIZE 200
+
+//typedef Array<int,7> Elements;
+//const int irrigationDays[7] = {0,2,4,6};
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -64,9 +68,25 @@ void setup() {
   Serial.println(msg);
   syslog.logf(LOG_INFO, msg);
 
+  lightSwitch.setEveryDayOff();
+  lightSwitch.setEveryOtherDayOn();
+  syslog.logf(LOG_INFO, "every other day 0: %d; day 1: %d; day 2: %d; day 3: %d; day 4: %d; day 5: %d; day 6: %d", lightSwitch.checkToRun(0), lightSwitch.checkToRun(1), lightSwitch.checkToRun(2), lightSwitch.checkToRun(3), lightSwitch.checkToRun(4), lightSwitch.checkToRun(5), lightSwitch.checkToRun(6));
 
-  lightSwitch.setRuntime(15);
-  syslog.logf(LOG_INFO, "lightSwitch runTime: %d", lightSwitch.runTime);
+  // Build an array with specific days to run, 
+  Array<int,7> irrigationDays;
+//  irrigationDays.fill(0);
+//  irrigationDays[3] = 1;  //Thursday
+//  irrigationDays[6] = 1;  //Sunday
+//  lightSwitch.setDaysFromArray(irrigationDays);
+  lightSwitch.setEveryDayOff();  //Start with all days off
+  lightSwitch.setSpecificDayOn(2);
+  lightSwitch.setSpecificDayOn(5);
+  lightSwitch.setSpecificDayOn(6);
+  syslog.logf(LOG_INFO, "specific days 0: %d; day 1: %d; day 2: %d; day 3: %d; day 4: %d; day 5: %d; day 6: %d", lightSwitch.checkToRun(0), lightSwitch.checkToRun(1), lightSwitch.checkToRun(2), lightSwitch.checkToRun(3), lightSwitch.checkToRun(4), lightSwitch.checkToRun(5), lightSwitch.checkToRun(6));
+
+  lightSwitch.setEveryDayOn();
+  lightSwitch.setRuntime(2);
+  lightSwitch.setStartTime(21, 30);
 
   // Setup OTA Update
   ArduinoOTA.begin();
@@ -81,6 +101,14 @@ time_t now;
 time_t prevTime = 0;;
 void loop() {
   ArduinoOTA.handle();
+
+  int irrigationAction = lightSwitch.handle();
+  if ( irrigationAction == 1 ) {
+    syslog.log(LOG_INFO, "irrigation started");
+  } 
+  if ( irrigationAction == 2 ) {
+    syslog.log(LOG_INFO, "irrigation stopped");
+  }
 
   now = time(nullptr);
   if ( now != prevTime ) {
