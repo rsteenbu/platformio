@@ -45,9 +45,6 @@ Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire,
 // Adafruit i2c LUX sensor
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
-int const minSoilMoistureLevel = 300;
-int const maxSoilMoistureLevel = 700;
-
 int debug = 0;
 char msg[40];
 
@@ -57,7 +54,7 @@ int const ONEWIRE_PIN = D7;
 // Create the relays
 Relay xmasLights(D3);
 Relay lvLights(D4);
-Relay irrigation(D5);
+TimerRelay irrigation(D5);
 
 // MotionSensor setup
 int pirState = LOW;  //start with no motion detected
@@ -74,10 +71,15 @@ void setup() {
   // prepare the motion sensor
   pinMode(PIR_PIN, INPUT);
 
-  // Setup the Relay
-  irrigation.setup();
+  // Setup the Relays
   xmasLights.setup();
   lvLights.setup();
+  irrigation.setup();
+  irrigation.setEveryDayOn();
+  irrigation.setSoilMoisture(SOIL_PIN);
+  irrigation.setSoilMoisturePercentageToRun(86);
+  irrigation.setRuntime(10);
+  irrigation.setStartTime(8, 15);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -155,7 +157,6 @@ void setup() {
   }
 }
 
-float soilMoisturePercentage;
 int16_t lightLevel = 0;
 float temperature = 0;
 bool displayOn = true;
@@ -163,6 +164,7 @@ int timesDark = 0;
 int timesLight = 0;
 time_t now;
 time_t prevTime = 0;;
+int prevIrrigationAction = 0;
 
 void loop() {
   ArduinoOTA.handle();
@@ -170,18 +172,29 @@ void loop() {
   now = time(nullptr);
   if ( now != prevTime ) {
     if ( now % 5 == 0 ) {
+      syslog.appName(IRRIGATION_APPNAME);
+      int irrigationAction = irrigation.handle();
+      if ( irrigationAction == 1 ) {
+	syslog.log(LOG_INFO, "scheduled irrigation started");
+      } 
+      if ( irrigationAction == 2 ) {
+	syslog.log(LOG_INFO, "scheduled irrigation stopped");
+      }
+      if ( prevIrrigationAction != 3 && irrigationAction == 3 ) {
+	syslog.log(LOG_INFO, "scheduled irrigation not started because the soil's wet");
+      }
+      if ( prevIrrigationAction != 4 && irrigationAction == 4 ) {
+	syslog.log(LOG_INFO, "scheduled irrigation stopped because the soil's wet");
+      }
+
+      prevIrrigationAction = irrigationAction;
+
+      syslog.appName(SYSTEM_APPNAME);
+
       temperature = getTemperature();
-
-      soilMoisturePercentage = getSoilMoisturePercent();
-
       lightLevel = veml.readLux();
-
-      updateDisplay(lightLevel, soilMoisturePercentage, temperature);
-
+      updateDisplay(lightLevel, irrigation.soilMoisturePercentage, temperature);
       controlLightSchedule(lvLights, lightLevel);
-
-      controlIrrigationSchedule(irrigation, soilMoisturePercentage);
-
     }
     prevTime = now;
   }
@@ -271,7 +284,7 @@ void loop() {
 
  // Sensors
   } else if (req.indexOf(F("/sensors/soilMoisture")) != -1) {
-    client.print(soilMoisturePercentage);
+    client.print(irrigation.soilMoisturePercentage);
   } else if (req.indexOf(F("/sensors/light")) != -1) {
     client.print(lightLevel);
   } else if (req.indexOf(F("/sensors/temperature")) != -1) {
@@ -289,7 +302,7 @@ void loop() {
     JsonObject sensors = doc.createNestedObject("sensors");
     sensors["temperature"] = temperature;
     sensors["lightLevel"] = lightLevel;
-    sensors["soilMoisturePercentage"] = soilMoisturePercentage;
+    sensors["soilMoisturePercentage"] = irrigation.soilMoisturePercentage;
     char timeString[20];
     struct tm *timeinfo = localtime(&now);
     strftime (timeString,20,"%D %T",timeinfo);
@@ -319,24 +332,6 @@ void loop() {
   // The client will actually be *flushed* then disconnected
   // when the function returns and 'client' object is destroyed (out-of-scope)
   // flush = ensure written data are received by the other side
-}
-
-float getSoilMoisturePercent( ) {
-      float soilMoistureLevel = analogRead(SOIL_PIN);
-
-      if (soilMoistureLevel < minSoilMoistureLevel) {
-	soilMoistureLevel = minSoilMoistureLevel;
-      }
-      if (soilMoistureLevel > maxSoilMoistureLevel) {
-	soilMoistureLevel = maxSoilMoistureLevel;
-      }
-      float soilMoisturePercentage = (1 - ((soilMoistureLevel - minSoilMoistureLevel) / (maxSoilMoistureLevel - minSoilMoistureLevel))) * 100;
-
-      if (debug) {
-	syslog.logf(LOG_INFO, "sml: %f; smp: %f", soilMoistureLevel, soilMoisturePercentage);
-      }
-
-      return soilMoisturePercentage;
 }
 
 void updateDisplay(int16_t lightLevel, float soilMoisturePercentage, float temperature) {
@@ -422,41 +417,3 @@ void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
     }
   }
 }
-
-void controlIrrigationSchedule(Relay &irrigationSwitch, float soilMoisturePercentage) {
-  struct tm *timeinfo = localtime(&now);
-  int hour = timeinfo->tm_hour;
-  int minute = timeinfo->tm_min;
-  int weekDay = timeinfo->tm_wday;
-  //int monthDay = timeinfo->tm_mday;
-
-  syslog.appName(IRRIGATION_APPNAME);
-   if (irrigationSwitch.getScheduleOverride()) {
-     return;
-   }
-
-  // Don't run the irrigation if it's wet outside
-  if (soilMoisturePercentage >= 20) {
-    if (irrigationSwitch.on) {
-      syslog.log(LOG_INFO, "Turning irrigation off because the soil's wet");
-      irrigationSwitch.switchOff();
-    }
-    return;
-  }
-
-  // 4 times / week for 15 minutes
-  if (!irrigationSwitch.on) {
-    if (weekDay == 0 || weekDay == 3 || weekDay == 5 || weekDay == 7) {
-      if ( hour == 8 && minute == 0 ) {
-	syslog.log(LOG_INFO, "Turning irrigation on");
-	irrigationSwitch.switchOn();
-
-      }
-    }
-  } else if (now - irrigationSwitch.onTime > (60 * 15))  {
-	syslog.log(LOG_INFO, "Turning irrigation off");
-	irrigationSwitch.switchOff();
-  }
-} 
-
-
