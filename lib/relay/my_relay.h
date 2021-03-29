@@ -75,6 +75,8 @@ class TimerRelay: public Relay {
     int runTime = 0;
     int startHour;
     int startMinute;
+    float soilMoisturePercentage;
+    float soilMoisturePercentageToRun = -1;
     Array<int,7> runDays;
 
     TimerRelay(int a): Relay(a) {}
@@ -86,6 +88,25 @@ class TimerRelay: public Relay {
     void setStartTime(int a, int b) {
       startHour = a;
       startMinute = b;
+    }
+
+    void setSoilMoisturePercentageToRun(int a) {
+      soilMoisturePercentageToRun = a;
+    }
+
+    void setSoilMoisture(int a) {
+      int const minSoilMoistureLevel = 300;
+      int const maxSoilMoistureLevel = 700;
+
+      float soilMoistureLevel = analogRead(a);
+
+      if (soilMoistureLevel < minSoilMoistureLevel) {
+	soilMoistureLevel = minSoilMoistureLevel;
+      }
+      if (soilMoistureLevel > maxSoilMoistureLevel) {
+	soilMoistureLevel = maxSoilMoistureLevel;
+      }
+      soilMoisturePercentage = (1 - ((soilMoistureLevel - minSoilMoistureLevel) / (maxSoilMoistureLevel - minSoilMoistureLevel))) * 100;
     }
 
    void setEveryOtherDayOn() {
@@ -138,10 +159,17 @@ class TimerRelay: public Relay {
        return 0;
      }
 
+     if ( scheduleOverride ) {
+       return 5; 
+     }
+
      // if we're not on, turn it on if it's the right day and time
      if (!on) {
        if ( runDays[weekDay] && currMinuteOfDay == startMinuteOfDay )
        {
+	 if ( soilMoisturePercentage > soilMoisturePercentageToRun ) {
+	   return 3;
+	 }
 	 switchOn();
 	 return 1;
        } else {
@@ -152,6 +180,10 @@ class TimerRelay: public Relay {
        if ( now >= onTime + (runTime * 60)  ) {
 	 switchOff();
 	 return 2;
+       }
+       if ( soilMoisturePercentage > soilMoisturePercentageToRun ) {
+	 switchOff();
+	 return 4;
        }
      }
      return 0;
