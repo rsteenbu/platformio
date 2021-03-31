@@ -1,5 +1,5 @@
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
+#include <ESP8266WebServer.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
@@ -23,9 +23,7 @@ Adafruit_AM2315 am2315;
 
 #define MYTZ TZ_America_Los_Angeles
 
-// Create an instance of the server
-// specify the port to listen on as an argument
-WiFiServer server(80);
+ESP8266WebServer server(80);
 
 #define JSON_SIZE 300
 #define SYSTEM_APPNAME "system"
@@ -55,6 +53,9 @@ Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
 bool vemlSensorFound = false;
 bool thermoSensorFound = false;
+int16_t lightLevel = 0;
+float temperature, humidity = -1;
+
 void setup() {
   Serial.begin(9600);
   Serial.println("Booting up");
@@ -81,7 +82,11 @@ void setup() {
 
   configTime(MYTZ, "pool.ntp.org");
 
-  // Start the server
+  // Start the HTTP server
+  server.on("/debug", handleDebug);
+  server.on("/light", handleLight);
+  server.on("/status", handleStatus);
+  server.on("/sensors", handleSensors);
   server.begin();
 
   // set I2C pins (SDA, SDL)
@@ -140,16 +145,103 @@ void setup() {
   if (!thermoSensorFound) {
     syslog.logf(LOG_INFO, "AMS23315 Sensor not found, giving up");
   } 
+  syslog.appName(SYSTEM_APPNAME);
 }
 
-time_t now;
-int16_t lightLevel = 0;
+void handleDebug() {
+  if (server.arg("level") == "0") {
+    syslog.log(LOG_INFO, "Debug level 0");
+    debug = 0;
+    server.send(200, "text/plain");
+  } else if (server.arg("level") == "1") {
+    syslog.log(LOG_INFO, "Debug level 1");
+    debug = 1;
+    server.send(200, "text/plain");
+  } if (server.arg("level") == "2") {
+    syslog.log(LOG_INFO, "Debug level 2");
+    debug = 2;
+    server.send(200, "text/plain");
+  } else if (server.arg("level") == "status") {
+    char msg[40];
+    sprintf(msg, "Debug level: %d", debug);
+    server.send(200, "text/plain", msg);
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown debug command");
+  }
+}
+
+void handleLight() {
+  if (server.arg("state") == "on") {
+    syslog.logf(LOG_INFO, "Turning light on at %ld", lvLights.onTime);
+    lvLights.switchOn();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    syslog.logf(LOG_INFO, "Turning light off at %ld", lvLights.offTime);
+    lvLights.switchOff();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "status") {
+    server.send(200, "text/plain", lvLights.on ? "1" : "0");
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown light command");
+  }
+}
+
+void handleSensors() {
+  if (server.arg("sensor") == "humidity") {
+    char msg[10];
+    sprintf(msg, "%0.2f", humidity);
+    server.send(200, "text/plain", msg);
+  }
+  if (server.arg("sensor") == "light") {
+    char msg[10];
+    sprintf(msg, "%d", lightLevel);
+    server.send(200, "text/plain", msg);
+  }
+  if (server.arg("sensor") == "temperature") {
+    char msg[10];
+    sprintf(msg, "%0.2f", temperature);
+    server.send(200, "text/plain", msg);
+  } else {
+    server.send(404, "text/plain", "ERROR: Sensor not found.");
+  }
+}
+
+void handleStatus() {
+  time_t now;
+  now = time(nullptr);
+  StaticJsonDocument<JSON_SIZE> doc;
+  JsonObject switches = doc.createNestedObject("switches");
+
+  switches["light"]["state"] = lvLights.state();
+  JsonObject sensors = doc.createNestedObject("sensors");
+  sensors["lightLevel"] = lightLevel;
+  sensors["temperature"] = temperature;
+  sensors["humidity"] = humidity;
+  doc["debug"] = debug;
+  char timeString[20];
+  struct tm *timeinfo = localtime(&now);
+  strftime (timeString,20,"%D %T",timeinfo);
+  doc["time"] = timeString;
+
+  size_t jsonDocSize = measureJsonPretty(doc);
+  if (jsonDocSize > JSON_SIZE) {
+    char msg[40];
+    sprintf(msg, "ERROR: JSON message too long, %d", jsonDocSize);
+    server.send(500, "text/plain", msg);
+  } else {
+    String httpResponse;
+    serializeJsonPretty(doc, httpResponse);
+    server.send(500, "text/plain", httpResponse);
+  }
+}
+
+
 time_t prevTime = 0;;
-float temperature, humidity = -1;
 void loop() {
   ArduinoOTA.handle();
+  server.handleClient();
 
-  now = time(nullptr);
+  time_t now = time(nullptr);
   if ( now != prevTime ) {
     if ( debug ) {
       syslog.logf(LOG_INFO, "seconds changed, now: %ld, prev: %ld", now, prevTime);
@@ -166,90 +258,8 @@ void loop() {
       }
       // convert the temperature to F
       temperature = ((temperature * 9) / 5 + 32);
+      syslog.appName(SYSTEM_APPNAME);
     }
     prevTime = now;
   } 
-
-  // Check if a client has connected
-  WiFiClient client = server.available();
-  if (!client) {
-    return;
-  }
-
-  // setup a new client
-  client.setTimeout(5000); // default is 1000
-
-  // Read the first line of the request
-  String req = client.readStringUntil('\r');
-
-  // Tell the client we're ok
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println();
-
-  syslog.appName(SYSTEM_APPNAME);
-  if (req.indexOf(F("/debug/0")) != -1) {
-    syslog.log(LOG_INFO, "Turning debug off");
-    debug = 0;
-  } else if (req.indexOf(F("/debug/1")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 1");
-    debug = 1;
-  } else if (req.indexOf(F("/debug/2")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 2");
-    debug = 2;
-
-  // low voltage lights
-  } else if (req.indexOf(F("/lvLights/status")) != -1) {
-    client.print(lvLights.on);
-  } else if (req.indexOf(F("/lvLights/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning light off");
-      lvLights.switchOff();
-  } else if (req.indexOf(F("/lvLights/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning light on");
-      lvLights.switchOn();
-
- // Sensors
-  } else if (req.indexOf(F("/sensors/humidity")) != -1) {
-    client.print(humidity);
-  } else if (req.indexOf(F("/sensors/light")) != -1) {
-    client.print(lightLevel);
-  } else if (req.indexOf(F("/sensors/temperature")) != -1) {
-    client.print(temperature);
-
-  } else if (req.indexOf(F("/status")) != -1) {
-    StaticJsonDocument<JSON_SIZE> doc;
-    JsonObject switches = doc.createNestedObject("switches");
-    switches["light"]["state"] = lvLights.state();
-    JsonObject sensors = doc.createNestedObject("sensors");
-    sensors["lightLevel"] = lightLevel;
-    sensors["temperature"] = temperature;
-    sensors["humidity"] = humidity;
-    doc["debug"] = debug;
-    char timeString[20];
-    struct tm *timeinfo = localtime(&now);
-    strftime (timeString,20,"%D %T",timeinfo);
-    doc["time"] = timeString;
-
-    if (measureJsonPretty(doc) > JSON_SIZE) {
-      client.println("ERROR: JSON message too long");
-      syslog.log(LOG_INFO, "JSON message too long");
-    } else {
-      serializeJsonPretty(doc, client);
-      client.println();
-    }
-  } else {
-    syslog.log(LOG_INFO, "received invalid request");
-  }
-
-  // read/ignore the rest of the request
-  // do not client.flush(): it is for output only, see below
-  while (client.available()) {
-    // byte by byte is not very efficient
-    client.read();
-  }
-
-  // The client will actually be *flushed* then disconnected
-  // when the function returns and 'client' object is destroyed (out-of-scope)
-  // flush = ensure written data are received by the other side
 }

@@ -1,5 +1,7 @@
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
+#include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
@@ -15,9 +17,11 @@
 
 #define MYTZ TZ_America_Los_Angeles
 
+
 // This device info
 #define APP_NAME "switch"
 #define JSON_SIZE 200
+
 
 ESP8266WebServer server(80);
 //typedef Array<int,7> Elements;
@@ -37,13 +41,14 @@ const int RX_PIN=3;
 const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
 
+
 StaticJsonDocument<200> doc;
 
 Relay lightSwitch(TX_PIN);
 //TimerRelay lightSwitch(TX_PIN);
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Booting up");
 
   // Setup the Relay
@@ -64,6 +69,24 @@ void setup() {
   Serial.println(msg);
   syslog.logf(LOG_INFO, msg);
 
+  /*
+
+  // Build an array with specific days to run, 
+  Array<int,7> irrigationDays;
+//  irrigationDays.fill(0);
+//  irrigationDays[3] = 1;  //Thursday
+//  irrigationDays[6] = 1;  //Sunday
+//  lightSwitch.setDaysFromArray(irrigationDays);
+  lightSwitch.setEveryDayOff();  //Start with all days off
+  lightSwitch.setSpecificDayOn(2);
+  lightSwitch.setSpecificDayOn(5);
+  lightSwitch.setSpecificDayOn(6);
+  syslog.logf(LOG_INFO, "specific days 0: %d; day 1: %d; day 2: %d; day 3: %d; day 4: %d; day 5: %d; day 6: %d", lightSwitch.checkToRun(0), lightSwitch.checkToRun(1), lightSwitch.checkToRun(2), lightSwitch.checkToRun(3), lightSwitch.checkToRun(4), lightSwitch.checkToRun(5), lightSwitch.checkToRun(6));
+
+  lightSwitch.setRuntime(2);
+  lightSwitch.setStartTime(21, 30);
+*/
+
   // Setup OTA Update
   ArduinoOTA.begin();
 
@@ -71,8 +94,9 @@ void setup() {
 
   // Start the server
   server.on("/debug", handleDebug);
-  server.on("/light", lightSwitch.handleLight);
+  server.on("/light", handleLight);
   server.on("/status", handleStatus);
+
   server.begin();
 }
 
@@ -127,18 +151,18 @@ void handleStatus() {
 }
 
 void handleLight() {
-  if (server.arg("state") == "on") {
+  if (server.arg("set") == "") {
+    server.send(200, "text/plain", lightSwitch.on ? "1" : "0");
+  } 
+  if (server.arg("set") == "on") {
     syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch.onTime);
     lightSwitch.switchOn();
     server.send(200, "text/plain");
-  } else if (server.arg("state") == "off") {
+  }
+  if (server.arg("set") == "off") {
     syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch.offTime);
     lightSwitch.switchOff();
     server.send(200, "text/plain");
-  } else if (server.arg("state") == "status") {
-    server.send(200, "text/plain", lightSwitch.on ? "1" : "0");
-  } else {
-    server.send(404, "text/plain", "ERROR: uknonwn light command");
   }
 }
 
@@ -156,4 +180,81 @@ void loop() {
 
   server.handleClient();
 
+  /*
+  // Check if a client has connected
+  WiFiClient client = server.available();
+  if (!client) {
+    return;
+  }
+
+  // setup a new client
+  client.setTimeout(5000); // default is 1000
+
+  // Read the first line of the request
+  String req = client.readStringUntil('\r');
+
+  // Tell the client we're ok
+  client.println("HTTP/1.1 200 OK");
+  client.println("Content-Type: text/html");
+  client.println("Connection: close");
+  client.println();
+
+  if (req.indexOf(F("/debug/0")) != -1) {
+    syslog.log(LOG_INFO, "Turning debug off");
+    debug = 0;
+  } else if (req.indexOf(F("/debug/1")) != -1) {
+    syslog.log(LOG_INFO, "Debug level 1");
+    debug = 1;
+  } else if (req.indexOf(F("/debug/2")) != -1) {
+    syslog.log(LOG_INFO, "Debug level 2");
+    debug = 2;
+  } else if (req.indexOf(F("/light/status")) != -1) {
+    client.print(lightSwitch.on);
+  } else if (req.indexOf(F("/light/off")) != -1) {
+      lightSwitch.switchOff();
+      syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch.offTime);
+  } else if (req.indexOf(F("/light/on")) != -1) {
+      lightSwitch.switchOn();
+      syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch.onTime);
+  } else if (req.indexOf(F("/status")) != -1) {
+    StaticJsonDocument<JSON_SIZE> doc;
+    JsonObject switches = doc.createNestedObject("switches");
+    switches["light"]["state"] = lightSwitch.state();
+    doc["debug"] = debug;
+
+    char timeString[20];
+    struct tm *timeinfo = localtime(&now);
+    strftime (timeString,20,"%D %T",timeinfo);
+    doc["time"] = timeString;
+    doc["seconds"] = timeinfo->tm_sec;
+    doc["wday"] = timeinfo->tm_wday;
+    doc["mktime"] = mktime(timeinfo);
+    doc["now"] = now;
+
+
+    size_t jsonDocSize = measureJsonPretty(doc);
+    if (jsonDocSize > JSON_SIZE) {
+      client.printf("ERROR: JSON message too long, %d", jsonDocSize);
+      client.println();
+    } else {
+      serializeJsonPretty(doc, client);
+      client.println();
+    }
+  } else {
+    syslog.log("received invalid request");
+  }
+
+  // read/ignore the rest of the request
+  // do not client.flush(): it is for output only, see below
+  while (client.available()) {
+    // byte by byte is not very efficient
+    client.read();
+  }
+
+  // The client will actually be *flushed* then disconnected
+  // when the function returns and 'client' object is destroyed (out-of-scope)
+  // flush = ensure written data are received by the other side
+  */
 }
+
+

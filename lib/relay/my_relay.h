@@ -1,6 +1,9 @@
 #ifndef RELAY_H
 #define RELAY_H
 #define MYTZ TZ_America_Los_Angeles
+#include <ESP8266WebServer.h>
+#include <WiFiUdp.h>
+#include <Syslog.h>
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
 #include <coredecls.h>                  // settimeofday_cb()
@@ -31,7 +34,11 @@ class Relay {
     bool scheduleOverride = false;
     time_t onTime = 0;
     time_t offTime = 0;
+    char* name;
 
+    void setName(char* a) {
+      name = a;
+    }
     void setBackwards(bool a) {
       backwards = a;
     }
@@ -129,8 +136,12 @@ class TimerRelay: public Relay {
      for ( int n=0 ; n<7 ; n++ ) {
        runDays[n] = 0;
      }
-   }
 
+   //  Array<int,7> irrigationDays;
+   //  irrigationDays.fill(0);
+   //  irrigationDays[3] = 1;  //Thursday
+   //  irrigationDays[6] = 1;  //Sunday
+   //  lightSwitch.setDaysFromArray(irrigationDays);
    void setDaysFromArray(Array<int,7> & array) {
      for ( int n=0 ; n<7 ; n++ ) {
        runDays[n] = array[n];
@@ -190,7 +201,68 @@ class TimerRelay: public Relay {
    }
 
 };
+/*
+class ScheduleRelay: public Relay {
+  private:
+    int const timesToSample = 10;
+    int timesLight = 0;
+    int timesDark = 0;
 
+  public:
+    int lightLevel;
+    int dusk = 100;
+    int nightOffHour = 0;
+    int morningOnHour = 5;
+
+    ScheduleRelay(int a): Relay(a) {}
+
+    void setDusk(int a) {
+      dusk = a;
+    }
+    void setLightLevel(int a) {
+      lightLevel = a;
+    }
+  
+    void setNightOffHour(int a) {
+      nightOffHour = a;
+    }
+    void setMorningOnHour(int a) {
+      morningOnHour = a;
+    }
+
+   int handle() {
+     time_t now = time(nullptr);
+     struct tm *timeinfo = localtime(&now);
+     int currHour = timeinfo->tm_hour;
+
+     if ( scheduleOverride ) {
+       return 5; 
+     }
+  
+     // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
+     if ( lightLevel < dusk && !on && !( currHour >= nightOffHour && currHour <= morningOnHour ) ) {
+       timesLight = 0;
+       timesDark++;
+
+       if (timesDark > timesToSample) {
+	 switchOn();
+	 return 1;
+       }
+     }
+
+     // Switch off criteria: the lights are on and either it's light or it's in the middle of the night
+     if (on && (lightLevel > dusk || ( currHour >= nightOffHour && currHour <= morningOnHour ))) {
+       timesDark = 0;
+       timesLight++;
+
+       if (timesLight > timesToSample) {
+	 switchOff();
+	 return 0;
+       }
+     }
+   }
+}
+*/
 
 #endif
 
