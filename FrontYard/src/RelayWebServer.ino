@@ -1,5 +1,5 @@
 #include <ESP8266WiFi.h>
-#include <ESP8266mDNS.h>
+#include <ESP8266WebServer.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
@@ -22,9 +22,7 @@
 
 #include <my_relay.h>
 
-// Create an instance of the server
-// specify the port to listen on as an argument
-WiFiServer server(80);
+ESP8266WebServer server(80);
 
 // This device info
 #define MYTZ TZ_America_Los_Angeles
@@ -64,6 +62,10 @@ OneWire ds(ONEWIRE_PIN);  // on pin D7 (a 4.7K resistor is necessary)
 DallasTemperature sensors(&ds);
 DeviceAddress frontyardThermometer;
 
+int16_t lightLevel = 0;
+float temperature = 0;
+bool displayOn = true;
+
 void setup() {
   Serial.begin(9600);
   Serial.println("Booting up");
@@ -101,7 +103,13 @@ void setup() {
   // set the time
   configTime(MYTZ, "pool.ntp.org");
 
-  // Start the server
+  // Start the HTTP server
+  server.on("/debug", handleDebug);
+  server.on("/light", handleLight);
+  server.on("/irrigation", handleIrrigation);
+  server.on("/xmasLights", handleXmasLights);
+  server.on("/status", handleStatus);
+  server.on("/sensors", handleSensors);
   server.begin();
 
   // set I2C pins (SDA, SDL)
@@ -155,21 +163,172 @@ void setup() {
   } else {
     sensors.setResolution(frontyardThermometer, 9);
   }
+  syslog.appName(SYSTEM_APPNAME);
 }
 
-int16_t lightLevel = 0;
-float temperature = 0;
-bool displayOn = true;
+void handleDebug() {
+  if (server.arg("level") == "0") {
+    syslog.log(LOG_INFO, "Debug level 0");
+    debug = 0;
+    server.send(200, "text/plain");
+  } else if (server.arg("level") == "1") {
+    syslog.log(LOG_INFO, "Debug level 1");
+    debug = 1;
+    server.send(200, "text/plain");
+  } if (server.arg("level") == "2") {
+    syslog.log(LOG_INFO, "Debug level 2");
+    debug = 2;
+    server.send(200, "text/plain");
+  } else if (server.arg("level") == "status") {
+    char msg[40];
+    sprintf(msg, "Debug level: %d", debug);
+    server.send(200, "text/plain", msg);
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown debug command");
+  }
+}
+
+void handleLight() {
+  if (server.arg("state") == "on") {
+    syslog.logf(LOG_INFO, "Turning light on at %ld", lvLights.onTime);
+    lvLights.switchOn();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    syslog.logf(LOG_INFO, "Turning light off at %ld", lvLights.offTime);
+    lvLights.switchOff();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "status") {
+    server.send(200, "text/plain", lvLights.on ? "1" : "0");
+  } else if (server.arg("override") == "on") {
+    syslog.log(LOG_INFO, "Disabling light schedule");
+    lvLights.setScheduleOverride(true);
+    server.send(200, "text/plain");
+  } else if (server.arg("override") == "off") {
+    syslog.log(LOG_INFO, "Enabling light schedule");
+    lvLights.setScheduleOverride(false);
+    server.send(200, "text/plain");
+  } else if (server.arg("override") == "status") {
+    server.send(200, "text/plain", lvLights.scheduleOverride ? "1" : "0");
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown light command");
+  }
+}
+
+void handleIrrigation() {
+  if (server.arg("state") == "on") {
+    syslog.logf(LOG_INFO, "Turning irrigation on at %ld", irrigation.onTime);
+    irrigation.switchOn();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    syslog.logf(LOG_INFO, "Turning irrigation off at %ld", irrigation.offTime);
+    irrigation.switchOff();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "status") {
+    server.send(200, "text/plain", irrigation.on ? "1" : "0");
+  } else if (server.arg("override") == "on") {
+    syslog.log(LOG_INFO, "Disabling irrigation schedule");
+    irrigation.setScheduleOverride(true);
+    server.send(200, "text/plain");
+  } else if (server.arg("override") == "off") {
+    syslog.log(LOG_INFO, "Enabling irrigation schedule");
+    irrigation.setScheduleOverride(false);
+    server.send(200, "text/plain");
+  } else if (server.arg("override") == "status") {
+    server.send(200, "text/plain", irrigation.scheduleOverride ? "1" : "0");
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown irrigation command");
+  }
+}
+
+void handleXmasLights() {
+  if (server.arg("state") == "on") {
+    syslog.logf(LOG_INFO, "Turning xmasLights on at %ld", xmasLights.onTime);
+    xmasLights.switchOn();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    syslog.logf(LOG_INFO, "Turning xmasLights off at %ld", xmasLights.offTime);
+    xmasLights.switchOff();
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "status") {
+    server.send(200, "text/plain", xmasLights.on ? "1" : "0");
+  } else if (server.arg("override") == "on") {
+    syslog.log(LOG_INFO, "Disabling xmasLights schedule");
+    xmasLights.setScheduleOverride(true);
+    server.send(200, "text/plain");
+  } else if (server.arg("override") == "off") {
+    syslog.log(LOG_INFO, "Enabling xmasLights schedule");
+    xmasLights.setScheduleOverride(false);
+    server.send(200, "text/plain");
+  } else if (server.arg("override") == "status") {
+    server.send(200, "text/plain", xmasLights.scheduleOverride ? "1" : "0");
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown xmasLights command");
+  }
+}
+
+void handleSensors() {
+  if (server.arg("sensor") == "soilmoisture") {
+    char msg[10];
+    sprintf(msg, "%0.2f", irrigation.soilMoisturePercentage);
+    server.send(200, "text/plain", msg);
+  } else if (server.arg("sensor") == "light") {
+    char msg[10];
+    sprintf(msg, "%d", lightLevel);
+    server.send(200, "text/plain", msg);
+  } else if (server.arg("sensor") == "temperature") {
+    char msg[10];
+    sprintf(msg, "%0.2f", temperature);
+    server.send(200, "text/plain", msg);
+  } else {
+    server.send(404, "text/plain", "ERROR: Sensor not found.");
+  }
+}
+
+void handleStatus() {
+  time_t now;
+  now = time(nullptr);
+  StaticJsonDocument<JSON_SIZE> doc;
+  JsonObject switches = doc.createNestedObject("switches");
+
+  switches["irrigation"]["state"] = irrigation.state();
+  switches["irrigation"]["override"] = irrigation.scheduleOverride;
+  switches["lvLights"]["state"] = lvLights.state();
+  switches["lvLights"]["override"] = lvLights.scheduleOverride;
+  switches["xmasLights"]["state"] = xmasLights.state();
+  switches["xmasLights"]["override"] = xmasLights.scheduleOverride;
+  JsonObject sensors = doc.createNestedObject("sensors");
+  sensors["temperature"] = temperature;
+  sensors["lightLevel"] = lightLevel;
+  sensors["soilMoisturePercentage"] = irrigation.soilMoisturePercentage;
+  char timeString[20];
+  struct tm *timeinfo = localtime(&now);
+  strftime (timeString,20,"%D %T",timeinfo);
+  doc["time"] = timeString;
+  doc["debug"] = debug;
+  doc["displayOn"] = displayOn;
+
+  size_t jsonDocSize = measureJsonPretty(doc);
+  if (jsonDocSize > JSON_SIZE) {
+    char msg[40];
+    sprintf(msg, "ERROR: JSON message too long, %d", jsonDocSize);
+    server.send(500, "text/plain", msg);
+  } else {
+    String httpResponse;
+    serializeJsonPretty(doc, httpResponse);
+    server.send(500, "text/plain", httpResponse);
+  }
+}
+
 int timesDark = 0;
 int timesLight = 0;
-time_t now;
 time_t prevTime = 0;;
 int prevIrrigationAction = 0;
 
 void loop() {
   ArduinoOTA.handle();
+  server.handleClient();
 
-  now = time(nullptr);
+  time_t now = time(nullptr);
   if ( now != prevTime ) {
     if ( now % 5 == 0 ) {
       syslog.appName(IRRIGATION_APPNAME);
@@ -192,146 +351,14 @@ void loop() {
       syslog.appName(SYSTEM_APPNAME);
 
       temperature = getTemperature();
+
       lightLevel = veml.readLux();
+
       updateDisplay(lightLevel, irrigation.soilMoisturePercentage, temperature);
       controlLightSchedule(lvLights, lightLevel);
     }
     prevTime = now;
   }
-
-  // Check if a client has connected
-  WiFiClient client = server.available();
-  if (!client) {
-    return;
-  }
-
-  // setup a new client
-  client.setTimeout(5000); // default is 1000
-
-  // Read the first line of the request
-  String req = client.readStringUntil('\r');
-
-  // Tell the client we're ok
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println();
-
-  syslog.appName(SYSTEM_APPNAME);
-  if (req.indexOf(F("/debug/0")) != -1) {
-    syslog.log(LOG_INFO, "Turning debug off");
-    debug = 0;
-  } else if (req.indexOf(F("/debug/1")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 1");
-    debug = 1;
-  } else if (req.indexOf(F("/debug/2")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 2");
-    debug = 2;
-    
-// Irrigation
-  } else if (req.indexOf(F("/irrigation/status")) != -1) {
-    client.print(irrigation.on);
-  } else if (req.indexOf(F("/irrigation/override/off")) != -1) {
-      syslog.log(LOG_INFO, "Enabling irrigation schedule");
-      irrigation.setScheduleOverride(false);
-  } else if (req.indexOf(F("/irrigation/override/on")) != -1) {
-      syslog.log(LOG_INFO, "Disabling irrigation schedule");
-      irrigation.setScheduleOverride(true);
-  } else if (req.indexOf(F("/irrigation/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning irrigation off");
-      irrigation.switchOff();
-  } else if (req.indexOf(F("/irrigation/override/status")) != -1) {
-      client.print(irrigation.getScheduleOverride());
-  } else if (req.indexOf(F("/irrigation/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning irrigation on");
-      irrigation.switchOn();
-
-// Low Voltage Lights
-  } else if (req.indexOf(F("/lvLights/status")) != -1) {
-    client.print(lvLights.on);
-  } else if (req.indexOf(F("/lvLights/override/off")) != -1) {
-      syslog.log(LOG_INFO, "Enabling lvLights schedule");
-      lvLights.setScheduleOverride(false);
-  } else if (req.indexOf(F("/lvLights/override/on")) != -1) {
-      syslog.log(LOG_INFO, "Disabling lvLights schedule");
-      lvLights.setScheduleOverride(true);
-  } else if (req.indexOf(F("/lvLights/override/status")) != -1) {
-      client.print(lvLights.getScheduleOverride());
-  } else if (req.indexOf(F("/lvLights/off")) != -1) {
-      syslog.log(LOG_INFO, "Turning lvLights off");
-      lvLights.switchOff();
-  } else if (req.indexOf(F("/lvLights/on")) != -1) {
-      syslog.log(LOG_INFO, "Turning lvLights on");
-      lvLights.switchOn();
-
-// xMasLights
-  } else if (req.indexOf(F("/xmasLights/status")) != -1) {
-    client.print(xmasLights.on);
-  } else if (req.indexOf(F("/xmasLights/override/off")) != -1) {
-    syslog.log(LOG_INFO, "Enabling xmasLights schedule");
-    xmasLights.setScheduleOverride(false);
-  } else if (req.indexOf(F("/xmasLights/override/on")) != -1) {
-    syslog.log(LOG_INFO, "Disabling xmasLights schedule");
-    xmasLights.setScheduleOverride(true);
-  } else if (req.indexOf(F("/xmasLights/override/status")) != -1) {
-      client.print(xmasLights.getScheduleOverride());
-  } else if (req.indexOf(F("/xmasLights/off")) != -1) {
-    syslog.log(LOG_INFO, "Turning xmasLights off");
-    xmasLights.switchOff();
-  } else if (req.indexOf(F("/xmasLights/on")) != -1) {
-    syslog.log(LOG_INFO, "Turning xmasLights on");
-    xmasLights.switchOn();
-
- // Sensors
-  } else if (req.indexOf(F("/sensors/soilMoisture")) != -1) {
-    client.print(irrigation.soilMoisturePercentage);
-  } else if (req.indexOf(F("/sensors/light")) != -1) {
-    client.print(lightLevel);
-  } else if (req.indexOf(F("/sensors/temperature")) != -1) {
-    client.print(temperature);
-
-  } else if (req.indexOf(F("/status")) != -1) {
-    StaticJsonDocument<JSON_SIZE> doc;
-    JsonObject switches = doc.createNestedObject("switches");
-    switches["irrigation"]["state"] = irrigation.state();
-    switches["irrigation"]["override"] = irrigation.getScheduleOverride();
-    switches["lvLights"]["state"] = lvLights.state();
-    switches["lvLights"]["override"] = lvLights.getScheduleOverride();
-    switches["xmasLights"]["state"] = xmasLights.state();
-    switches["xmasLights"]["override"] = xmasLights.getScheduleOverride();
-    JsonObject sensors = doc.createNestedObject("sensors");
-    sensors["temperature"] = temperature;
-    sensors["lightLevel"] = lightLevel;
-    sensors["soilMoisturePercentage"] = irrigation.soilMoisturePercentage;
-    char timeString[20];
-    struct tm *timeinfo = localtime(&now);
-    strftime (timeString,20,"%D %T",timeinfo);
-    doc["time"] = timeString;
-    doc["debug"] = debug;
-    doc["displayOn"] = displayOn;
-
-    size_t jsonDocSize = measureJsonPretty(doc);
-    if (jsonDocSize > JSON_SIZE) {
-      client.printf("ERROR: JSON message too long, %d", jsonDocSize);
-      client.println();
-    } else {
-      serializeJsonPretty(doc, client);
-      client.println();
-    }
-  } else {
-    syslog.log(LOG_INFO, "received invalid request");
-  }
-
-  // read/ignore the rest of the request
-  // do not client.flush(): it is for output only, see below
-  while (client.available()) {
-    // byte by byte is not very efficient
-    client.read();
-  }
-
-  // The client will actually be *flushed* then disconnected
-  // when the function returns and 'client' object is destroyed (out-of-scope)
-  // flush = ensure written data are received by the other side
 }
 
 void updateDisplay(int16_t lightLevel, float soilMoisturePercentage, float temperature) {
@@ -356,6 +383,7 @@ void updateDisplay(int16_t lightLevel, float soilMoisturePercentage, float tempe
     if (displayOn) {
       // print some stuff to the display
       char timeString[20];
+      time_t now = time(nullptr);
       struct tm *timeinfo = localtime(&now);
       strftime (timeString,20,"%D %T",timeinfo);
 
@@ -383,16 +411,19 @@ float getTemperature() {
 
 void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
   int const dusk = 100;
+  time_t now = time(nullptr);
   int const timesToSample = 10;
   int hour = localtime(&now)->tm_hour;
+  int nightOffHour = 0;
+  int morningOnHour = 5;
 
   syslog.appName(LIGHTSWITCH_APPNAME);
-  if (lightSwitch.getScheduleOverride()) {
+  if (lightSwitch.scheduleOverride) {
     return;
   }
 
   // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
-  if ( lightLevel < dusk && !lightSwitch.on && !( hour >= 0 && hour < 6 ) ) {
+  if ( lightLevel < dusk && !lightSwitch.on && !( nightOffHour >= 0 && hour <= morningOnHour ) ) {
     timesLight = 0;
     timesDark++;
     if (debug) {
