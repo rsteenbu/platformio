@@ -43,7 +43,7 @@ Relay lightSwitch(TX_PIN);
 //TimerRelay lightSwitch(TX_PIN);
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Serial.println("Booting up");
 
   // Setup the Relay
@@ -71,13 +71,13 @@ void setup() {
 
   // Start the server
   server.on("/debug", handleDebug);
-  server.on("/light", lightSwitch.handleLight);
+  server.on("/light", handleLight);
   server.on("/status", handleStatus);
   server.begin();
 }
 
 void handleDebug() {
-  if (server.arg("level") == "") {
+  if (server.arg("level") == "status") {
     char msg[40];
     sprintf(msg, "Debug level: %d", debug);
     server.send(200, "text/plain", msg);
@@ -93,7 +93,9 @@ void handleDebug() {
     syslog.log(LOG_INFO, "Debug level 2");
     debug = 2;
     server.send(200, "text/plain");
-  } 
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown debug command");
+  }
 }
 
 void handleStatus() {
@@ -127,7 +129,9 @@ void handleStatus() {
 }
 
 void handleLight() {
-  if (server.arg("state") == "on") {
+  if (server.arg("state") == "status") {
+    server.send(200, "text/plain", lightSwitch.on ? "1" : "0");
+  } else if (server.arg("state") == "on") {
     syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch.onTime);
     lightSwitch.switchOn();
     server.send(200, "text/plain");
@@ -135,8 +139,6 @@ void handleLight() {
     syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch.offTime);
     lightSwitch.switchOff();
     server.send(200, "text/plain");
-  } else if (server.arg("state") == "status") {
-    server.send(200, "text/plain", lightSwitch.on ? "1" : "0");
   } else {
     server.send(404, "text/plain", "ERROR: uknonwn light command");
   }
