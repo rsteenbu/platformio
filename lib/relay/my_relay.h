@@ -1,14 +1,15 @@
 #ifndef RELAY_H
 #define RELAY_H
 #define MYTZ TZ_America_Los_Angeles
-#include <ESP8266WebServer.h>
-#include <WiFiUdp.h>
-#include <Syslog.h>
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
 #include <coredecls.h>                  // settimeofday_cb()
 #include <TZ.h>
 #include <Array.h>
+#include <Wire.h>
+#include "Adafruit_MCP23017.h"
+#include <SPI.h>
+#include <Adafruit_ADS1X15.h>
 
 class Relay {
   int pin;
@@ -16,6 +17,7 @@ class Relay {
   int onVal, offVal;
 
   public:
+    //constructors
     Relay (int a): pin(a) {
         onVal = HIGH;
         offVal = LOW;
@@ -29,6 +31,8 @@ class Relay {
         offVal = LOW;
       }
     }
+    Relay (int a, Adafruit_MCP23017* b) {
+    }
 
     bool on = false;
     bool scheduleOverride = false;
@@ -39,21 +43,26 @@ class Relay {
     void setName(char* a) {
       name = a;
     }
+
     void setBackwards(bool a) {
       backwards = a;
     }
+
     void setScheduleOverride(bool a) {
       scheduleOverride = a;
     }
+
     bool getScheduleOverride() {
       return scheduleOverride;
     }
+
     void setup() {
       pinMode(pin, OUTPUT);
       digitalWrite(pin, offVal); // start off
       configTime(MYTZ, "pool.ntp.org");
       offTime = time(nullptr);
     }
+
     void switchOn() {
       if (!on) {
         digitalWrite(pin, onVal);
@@ -61,6 +70,7 @@ class Relay {
 	onTime = time(nullptr);
       }
     }
+
     void switchOff() {
       if (on) {
         digitalWrite(pin, offVal);
@@ -68,11 +78,49 @@ class Relay {
 	offTime = time(nullptr);
       }
     }
+
     const char* state() {
       if (on) {
         return "on";
       } else {
         return "off";
+      }
+    }
+};
+
+class McpRelay: public Relay {
+  int pin;
+  int onVal, offVal;
+  Adafruit_MCP23017* mcp;
+
+  public:
+    McpRelay (int a, Adafruit_MCP23017* b) : Relay (a, b) {
+      pin = a;
+      mcp = b;
+      onVal = HIGH;
+      offVal = LOW;
+    }
+
+    void setup() {
+      (*mcp).pinMode(pin, OUTPUT);
+      (*mcp).digitalWrite(pin,offVal);
+      configTime(MYTZ, "pool.ntp.org");
+      offTime = time(nullptr);
+    }
+
+    void switchOn() {
+      if (!on) {
+        (*mcp).digitalWrite(pin, onVal);
+        on = true;
+	onTime = time(nullptr);
+      }
+    }
+
+    void switchOff() {
+      if (on) {
+        (*mcp).digitalWrite(pin, offVal);
+        on = false;
+	offTime = time(nullptr);
       }
     }
 };
@@ -136,6 +184,7 @@ class TimerRelay: public Relay {
      for ( int n=0 ; n<7 ; n++ ) {
        runDays[n] = 0;
      }
+   }
 
    //  Array<int,7> irrigationDays;
    //  irrigationDays.fill(0);

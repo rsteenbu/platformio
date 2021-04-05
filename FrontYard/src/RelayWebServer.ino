@@ -288,14 +288,15 @@ void handleStatus() {
   time_t now;
   now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
-  JsonObject switches = doc.createNestedObject("switches");
 
+  JsonObject switches = doc.createNestedObject("switches");
   switches["irrigation"]["state"] = irrigation.state();
   switches["irrigation"]["override"] = irrigation.scheduleOverride;
   switches["lvLights"]["state"] = lvLights.state();
   switches["lvLights"]["override"] = lvLights.scheduleOverride;
   switches["xmasLights"]["state"] = xmasLights.state();
   switches["xmasLights"]["override"] = xmasLights.scheduleOverride;
+
   JsonObject sensors = doc.createNestedObject("sensors");
   sensors["temperature"] = temperature;
   sensors["lightLevel"] = lightLevel;

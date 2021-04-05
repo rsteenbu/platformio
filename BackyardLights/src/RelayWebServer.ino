@@ -63,6 +63,9 @@ void setup() {
   // Setup the Relay
   lvLights.setup();
 
+  // set I2C pins (SDA, SDL)
+  Wire.begin(GPIO2_PIN, GPIO0_PIN);
+
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
   WiFi.hostname(DEVICE_HOSTNAME);
@@ -88,10 +91,6 @@ void setup() {
   server.on("/status", handleStatus);
   server.on("/sensors", handleSensors);
   server.begin();
-
-  // set I2C pins (SDA, SDL)
-  Wire.begin(GPIO2_PIN, GPIO0_PIN);
-
   syslog.appName(LIGHT_APPNAME);
   int attempts = 0; 
   while (attempts < 10) {
