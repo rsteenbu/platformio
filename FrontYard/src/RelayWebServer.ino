@@ -26,7 +26,7 @@ ESP8266WebServer server(80);
 
 // This device info
 #define MYTZ TZ_America_Los_Angeles
-#define JSON_SIZE 450
+#define JSON_SIZE 500
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -52,7 +52,7 @@ int const ONEWIRE_PIN = D7;
 // Create the relays
 Relay xmasLights(D3);
 Relay lvLights(D4);
-TimerRelay irrigation(D5);
+IrrigationRelay irrigation(D5);
 
 // MotionSensor setup
 int pirState = LOW;  //start with no motion detected
@@ -78,11 +78,10 @@ void setup() {
   lvLights.setup();
   irrigation.setup();
   irrigation.setEveryDayOn();
-  irrigation.setSoilMoisture(SOIL_PIN);
-  irrigation.setSoilMoisturePercentageToRun(86);
   irrigation.setRuntime(10);
   irrigation.setStartTime(8, 15);
-
+  irrigation.setSoilMoisture(SOIL_PIN,86); // pin for analog read, percentage to run at
+  irrigation.setSoilMoistureLimits(660, 330); //dry level, wet level
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
   WiFi.hostname(DEVICE_HOSTNAME);
@@ -300,6 +299,7 @@ void handleStatus() {
   JsonObject sensors = doc.createNestedObject("sensors");
   sensors["temperature"] = temperature;
   sensors["lightLevel"] = lightLevel;
+  sensors["soilMoistureLevel"] = irrigation.soilMoistureLevel;
   sensors["soilMoisturePercentage"] = irrigation.soilMoisturePercentage;
   char timeString[20];
   struct tm *timeinfo = localtime(&now);

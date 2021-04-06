@@ -15,12 +15,28 @@ class Relay {
   int pin;
   bool backwards;
   int onVal, offVal;
+  Adafruit_MCP23017* mcp;
+  bool i2cRelay = false;
 
   public:
+    //variables
+    bool on = false;
+    bool scheduleOverride = false;
+    time_t onTime = 0;
+    time_t offTime = 0;
+    char* name;
+
     //constructors
     Relay (int a): pin(a) {
         onVal = HIGH;
         offVal = LOW;
+    }
+    Relay (int a, Adafruit_MCP23017* b) {
+      pin = a;
+      mcp = b;
+      i2cRelay = true;
+      onVal = HIGH;
+      offVal = LOW;
     }
     Relay (int a, bool b): pin(a), backwards(b) {
       if (backwards) {
@@ -31,17 +47,16 @@ class Relay {
         offVal = LOW;
       }
     }
-    Relay (int a, Adafruit_MCP23017* b) {
+
+    //members
+    void setI2CRelay(Adafruit_MCP23017* a) {
+      i2cRelay = true;
+      mcp = a;
     }
 
-    bool on = false;
-    bool scheduleOverride = false;
-    time_t onTime = 0;
-    time_t offTime = 0;
-    char* name;
-
-    void setName(char* a) {
-      name = a;
+    void setName(char*a) {
+      name = new char[strlen(a)+1];
+      strcpy(name,a);
     }
 
     void setBackwards(bool a) {
@@ -57,15 +72,20 @@ class Relay {
     }
 
     void setup() {
-      pinMode(pin, OUTPUT);
-      digitalWrite(pin, offVal); // start off
+      if (i2cRelay) {
+	(*mcp).pinMode(pin, OUTPUT);
+	(*mcp).digitalWrite(pin,offVal);
+      } else {
+	pinMode(pin, OUTPUT);
+	digitalWrite(pin, offVal); // start off
+      }
       configTime(MYTZ, "pool.ntp.org");
       offTime = time(nullptr);
     }
 
     void switchOn() {
       if (!on) {
-        digitalWrite(pin, onVal);
+        i2cRelay ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
         on = true;
 	onTime = time(nullptr);
       }
@@ -73,7 +93,7 @@ class Relay {
 
     void switchOff() {
       if (on) {
-        digitalWrite(pin, offVal);
+        i2cRelay ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
         on = false;
 	offTime = time(nullptr);
       }
@@ -88,53 +108,21 @@ class Relay {
     }
 };
 
-class McpRelay: public Relay {
-  int pin;
-  int onVal, offVal;
-  Adafruit_MCP23017* mcp;
-
-  public:
-    McpRelay (int a, Adafruit_MCP23017* b) : Relay (a, b) {
-      pin = a;
-      mcp = b;
-      onVal = HIGH;
-      offVal = LOW;
-    }
-
-    void setup() {
-      (*mcp).pinMode(pin, OUTPUT);
-      (*mcp).digitalWrite(pin,offVal);
-      configTime(MYTZ, "pool.ntp.org");
-      offTime = time(nullptr);
-    }
-
-    void switchOn() {
-      if (!on) {
-        (*mcp).digitalWrite(pin, onVal);
-        on = true;
-	onTime = time(nullptr);
-      }
-    }
-
-    void switchOff() {
-      if (on) {
-        (*mcp).digitalWrite(pin, offVal);
-        on = false;
-	offTime = time(nullptr);
-      }
-    }
-};
-
 class TimerRelay: public Relay {
+  int soilPin;
+  float soilMoisturePercentageToRun = -1;
+
   public:
     int runTime = 0;
     int startHour;
     int startMinute;
-    float soilMoisturePercentage;
-    float soilMoisturePercentageToRun = -1;
+    double soilMoisturePercentage;
+    double soilMoistureLevel;
     Array<int,7> runDays;
 
+    //constructurs
     TimerRelay(int a): Relay(a) {}
+    TimerRelay (int a, Adafruit_MCP23017* b): Relay(a, b) {}
 
     void setRuntime(int a) {
       runTime = a;
@@ -143,25 +131,6 @@ class TimerRelay: public Relay {
     void setStartTime(int a, int b) {
       startHour = a;
       startMinute = b;
-    }
-
-    void setSoilMoisturePercentageToRun(int a) {
-      soilMoisturePercentageToRun = a;
-    }
-
-    void setSoilMoisture(int a) {
-      int const minSoilMoistureLevel = 300;
-      int const maxSoilMoistureLevel = 700;
-
-      float soilMoistureLevel = analogRead(a);
-
-      if (soilMoistureLevel < minSoilMoistureLevel) {
-	soilMoistureLevel = minSoilMoistureLevel;
-      }
-      if (soilMoistureLevel > maxSoilMoistureLevel) {
-	soilMoistureLevel = maxSoilMoistureLevel;
-      }
-      soilMoisturePercentage = (1 - ((soilMoistureLevel - minSoilMoistureLevel) / (maxSoilMoistureLevel - minSoilMoistureLevel))) * 100;
     }
 
    void setEveryOtherDayOn() {
@@ -205,7 +174,7 @@ class TimerRelay: public Relay {
      return runDays[weekDay];
    } 
 
-   int handle() {
+   bool isTimeToStart() {
      time_t now = time(nullptr);
      struct tm *timeinfo = localtime(&now);
      int currHour = timeinfo->tm_hour;
@@ -215,47 +184,120 @@ class TimerRelay: public Relay {
      int currMinuteOfDay = (currHour * 60) + currMinute;
      int startMinuteOfDay = (startHour * 60) + startMinute;
 
-     if ( runTime == 0 ) {
-       return 0;
-     }
+     return runDays[weekDay] && currMinuteOfDay == startMinuteOfDay;
+   }
 
-     if ( scheduleOverride ) {
-       return 5; 
-     }
+   bool isTimeToStop() {
+     time_t now = time(nullptr);
+
+     return now >= onTime + (runTime * 60);
+   }
+
+   int handle() {
+     // if we don't have runtime set, then just return
+     if ( runTime == 0 ) return 0;
+     if ( scheduleOverride ) return 5;
 
      // if we're not on, turn it on if it's the right day and time
-     if (!on) {
-       if ( runDays[weekDay] && currMinuteOfDay == startMinuteOfDay )
-       {
-	 if ( soilMoisturePercentage > soilMoisturePercentageToRun ) {
-	   return 3;
-	 }
-	 switchOn();
-	 return 1;
-       } else {
-	 return 0;
-       }
-     // if we're on, turn it off if it's been more than than the time to run
-     } else {
-       if ( now >= onTime + (runTime * 60)  ) {
+     if ( !on && isTimeToStart() ) {
+       return 1;
+     } 
+
+     // if we're on, turn it off if it's been more than than the time to run 
+     if ( on && isTimeToStop() ) {
 	 switchOff();
 	 return 2;
        }
-       if ( soilMoisturePercentage > soilMoisturePercentageToRun ) {
+
+     return 0;
+   }
+};
+
+class IrrigationRelay: public TimerRelay {
+  int soilPin;
+  float soilMoisturePercentageToRun = -1;
+  bool i2cSoilMoistureSensor = false;
+  // default limits - analog pin read frontyard
+  int drySoilMoistureLevel = 660;
+  int wetSoilMoistureLevel = 330;
+  Adafruit_ADS1015 ads;     /* Use this for the 12-bit version */
+
+  public:
+    double soilMoisturePercentage;
+    double soilMoistureLevel = -1;
+
+    //constructors
+    IrrigationRelay (int a): TimerRelay(a) { }
+    IrrigationRelay (int a, Adafruit_MCP23017* b): TimerRelay(a, b) { }
+
+    // turn on the soilMoisture check at soilMoisturePercentageToRun
+    void setSoilMoisture(int a, int b) {
+      soilPin = a;
+      soilMoisturePercentageToRun = b;
+    }
+
+    void setSoilMoistureLimits(int a, int b) {
+      drySoilMoistureLevel = a;
+      wetSoilMoistureLevel = b;
+    }
+
+    void setI2cSoilMoistureSensor() {
+      i2cSoilMoistureSensor = true;
+      ads.begin(0x48);
+    }
+
+    bool checkSoilMoisture() {
+      if (i2cSoilMoistureSensor) {
+	soilMoistureLevel = ads.readADC_SingleEnded(soilPin);
+      } else {
+	soilMoistureLevel = analogRead(soilPin);
+      }
+
+      if (soilMoistureLevel > drySoilMoistureLevel) {
+	soilMoistureLevel = drySoilMoistureLevel;
+      }
+      if (soilMoistureLevel < wetSoilMoistureLevel) {
+	soilMoistureLevel = wetSoilMoistureLevel;
+      }
+      
+      soilMoisturePercentage = 100 - ((soilMoistureLevel - wetSoilMoistureLevel) / (drySoilMoistureLevel - wetSoilMoistureLevel) * 100);
+      
+      return soilMoisturePercentage < soilMoisturePercentageToRun;
+    }
+
+   int handle() {
+     // set the soilMoisture level on every loop
+     bool soilDry = checkSoilMoisture();
+
+     // if we don't have runtime set, then just return
+     if ( runTime == 0 ) return 0;
+     if ( scheduleOverride ) return 5;
+
+     // if we're not on, turn it on if it's the right day and time
+     if ( !on && isTimeToStart() ) {
+       if ( !soilDry ) return 3;
+       switchOn();
+       return 1;
+     } 
+
+     // if we're on, turn it off if it's been more than than the time to run or if it's started raining
+     if ( on && isTimeToStop() ) {
+	 switchOff();
+	 return 2;
+       }
+     if ( on && soilMoisturePercentage > soilMoisturePercentageToRun ) {
 	 switchOff();
 	 return 4;
-       }
      }
      return 0;
    }
-
 };
-/*
+
+
 class ScheduleRelay: public Relay {
-  private:
-    int const timesToSample = 10;
-    int timesLight = 0;
-    int timesDark = 0;
+  int const timesToSample = 10;
+  int timesLight = 0;
+  int timesDark = 0;
 
   public:
     int lightLevel;
@@ -275,6 +317,7 @@ class ScheduleRelay: public Relay {
     void setNightOffHour(int a) {
       nightOffHour = a;
     }
+
     void setMorningOnHour(int a) {
       morningOnHour = a;
     }
@@ -310,8 +353,8 @@ class ScheduleRelay: public Relay {
        }
      }
    }
-}
-*/
+};
+
 
 #endif
 
