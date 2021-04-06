@@ -19,7 +19,7 @@
 #include "Adafruit_MCP23017.h"
 
 #include <SPI.h>
-#include <Adafruit_ADS1X15.h>
+//#include <Adafruit_ADS1X15.h>
 
 #define MYTZ TZ_America_Los_Angeles
 
@@ -46,20 +46,16 @@ const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
 
 StaticJsonDocument<200> doc;
-int soilMoistureLevel;
 
 Adafruit_MCP23017 mcp;
-McpRelay irrigationZone1(1, &mcp);
+//McpRelay irrigationZone1(1, &mcp);
+//Relay irrigationZone1(1, &mcp);
+IrrigationRelay irrigationZone1(1, &mcp);
 Relay light(1);
-
-// D2A
-//Adafruit_ADS1115 ads(0x48);
-Adafruit_ADS1015 ads;     /* Use this for the 12-bit version */
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting up");
-
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -84,21 +80,24 @@ void setup() {
   // set I2C pins (SDA, SDL)
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
   mcp.begin();      // use default address 0
-//  mcp.pinMode(1, OUTPUT);
-//  mcp.digitalWrite(1, HIGH);
+
   // Setup the Relay
   irrigationZone1.setup();
-  light.setup();
+  char irrigationName_1[20] = "garden";
+  irrigationZone1.setName(irrigationName_1);
+  syslog.logf(LOG_INFO, "irrigation Zone 1 name: %s", irrigationZone1.name);
 
-  // Start the i2c analog gateway
-  ads.begin(0x48);
+  irrigationZone1.setSoilMoisture(0,86); // pin for analog read, percentage to run at
+  irrigationZone1.setI2cSoilMoistureSensor(); // use the i2c interface to use the ads class
+  irrigationZone1.setSoilMoistureLimits(465, 228);
+
+  light.setup();
 
   // Start the server
   server.on("/debug", handleDebug);
   server.on("/irrigation_1", handleIrrigationZone1);
   server.on("/light", handleLight);
   server.on("/status", handleStatus);
-  server.on("/i2c", handleI2C);
 
   server.begin();
 }
@@ -135,7 +134,8 @@ void handleStatus() {
   switches["light"]["state"] = irrigationZone1.state();
 
   JsonObject sensors = doc.createNestedObject("sensors");
-  sensors["soilMoisture"] = soilMoistureLevel;
+  sensors["soilMoistureLevel"] = irrigationZone1.soilMoistureLevel;
+  sensors["soilMoisturePercentage"] = irrigationZone1.soilMoisturePercentage;
   doc["debug"] = debug;
 
   char timeString[20];
@@ -187,33 +187,14 @@ void handleLight() {
   }
 }
 
-void handleI2C() {
-  if (server.arg("state") == "status") {
-    server.send(200, "text/plain", irrigationZone1.on ? "1" : "0");
-  } else if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning i2c light on at %ld", irrigationZone1.onTime);
-    mcp.digitalWrite(1, HIGH);
-    //irrigationZone1.switchOn();
-    server.send(200, "text/plain");
-  } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning i2c light off at %ld", irrigationZone1.offTime);
-    mcp.digitalWrite(1, LOW);
-    //irrigationZone1.switchOff();
-    server.send(200, "text/plain");
-  } else {
-    server.send(404, "text/plain", "ERROR: unknown light command");
-  }
-}
-
-
 time_t prevTime = 0;;
 void loop() {
   ArduinoOTA.handle();
 
   time_t now = time(nullptr);
   if ( now != prevTime ) {
-    if ( now % 10 == 0 ) {
-      soilMoistureLevel = ads.readADC_SingleEnded(0);
+    if ( now % 5 == 0 ) {
+      irrigationZone1.handle();
     }
   }
   prevTime = now;
