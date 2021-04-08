@@ -80,7 +80,7 @@ void setup() {
   irrigation.setEveryDayOn();
   irrigation.setRuntime(10);
   irrigation.setStartTime(8, 15);
-  irrigation.setSoilMoisture(SOIL_PIN,86); // pin for analog read, percentage to run at
+  irrigation.setSoilMoistureSensor(SOIL_PIN,86); // pin for analog read, percentage to run at
   irrigation.setSoilMoistureLimits(660, 330); //dry level, wet level
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);

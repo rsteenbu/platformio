@@ -11,6 +11,10 @@
 #include <SPI.h>
 #include <Adafruit_ADS1X15.h>
 
+class IrrigationZones {
+
+};
+
 class Relay {
   int pin;
   bool backwards;
@@ -46,12 +50,6 @@ class Relay {
         onVal = HIGH;
         offVal = LOW;
       }
-    }
-
-    //members
-    void setI2CRelay(Adafruit_MCP23017* a) {
-      i2cRelay = true;
-      mcp = a;
     }
 
     void setName(char*a) {
@@ -121,8 +119,12 @@ class TimerRelay: public Relay {
     Array<int,7> runDays;
 
     //constructurs
-    TimerRelay(int a): Relay(a) {}
-    TimerRelay (int a, Adafruit_MCP23017* b): Relay(a, b) {}
+    TimerRelay(int a): Relay(a) {
+      setEveryDayOn();
+    }
+    TimerRelay (int a, Adafruit_MCP23017* b): Relay(a, b) {
+      setEveryDayOn();
+    }
 
     void setRuntime(int a) {
       runTime = a;
@@ -231,19 +233,21 @@ class IrrigationRelay: public TimerRelay {
     IrrigationRelay (int a, Adafruit_MCP23017* b): TimerRelay(a, b) { }
 
     // turn on the soilMoisture check at soilMoisturePercentageToRun
-    void setSoilMoisture(int a, int b) {
+    void setSoilMoistureSensor(int a, int b) {
       soilPin = a;
       soilMoisturePercentageToRun = b;
+    }
+
+    void setSoilMoistureSensor(uint8_t a, int b, int c) {
+      i2cSoilMoistureSensor = true;
+      ads.begin(a);
+      soilPin = b;
+      soilMoisturePercentageToRun = c;
     }
 
     void setSoilMoistureLimits(int a, int b) {
       drySoilMoistureLevel = a;
       wetSoilMoistureLevel = b;
-    }
-
-    void setI2cSoilMoistureSensor() {
-      i2cSoilMoistureSensor = true;
-      ads.begin(0x48);
     }
 
     bool checkSoilMoisture() {
@@ -289,7 +293,8 @@ class IrrigationRelay: public TimerRelay {
 	 switchOff();
 	 return 4;
      }
-     return 0;
+
+     return -1;
    }
 };
 
