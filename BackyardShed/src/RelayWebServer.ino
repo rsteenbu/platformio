@@ -6,7 +6,7 @@
 #include <Syslog.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
-#include <Array.h>
+#include <Vector.h>
 
 #include <my_relay.h>
 
@@ -18,18 +18,17 @@
 #include <Wire.h>
 #include "Adafruit_MCP23017.h"
 
-#include <SPI.h>
-//#include <Adafruit_ADS1X15.h>
-
-#define MYTZ TZ_America_Los_Angeles
-
 // This device info
 #define APP_NAME "switch"
-#define JSON_SIZE 300
+#define JSON_SIZE 500
+#define MYTZ TZ_America_Los_Angeles
+// ESP-01 Pins
+const int TX_PIN=1;
+const int RX_PIN=3;
+const int GPIO0_PIN=0;
+const int GPIO2_PIN=2;
 
 ESP8266WebServer server(80);
-//typedef Array<int,7> Elements;
-//const int irrigationDays[7] = {0,2,4,6};
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -38,20 +37,14 @@ WiFiUDP udpClient;
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 int debug = 0;
-
-// ESP-01 Pins
-const int TX_PIN=1;
-const int RX_PIN=3;
-const int GPIO0_PIN=0;
-const int GPIO2_PIN=2;
+int irrigationAction = 0;
 
 StaticJsonDocument<200> doc;
 
 Adafruit_MCP23017 mcp;
-//McpRelay irrigationZone1(1, &mcp);
-//Relay irrigationZone1(1, &mcp);
-IrrigationRelay irrigationZone1(1, &mcp);
-Relay light(1);
+Vector<IrrigationRelay*> IrrigationZones;
+
+IrrigationRelay * storage_array[8];
 
 void setup() {
   Serial.begin(115200);
@@ -81,23 +74,36 @@ void setup() {
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
   mcp.begin();      // use default address 0
 
-  // Setup the Relay
-  irrigationZone1.setup();
-  char irrigationName_1[20] = "garden";
-  irrigationZone1.setName(irrigationName_1);
-  syslog.logf(LOG_INFO, "irrigation Zone 1 name: %s", irrigationZone1.name);
+  IrrigationZones.setStorage(storage_array);
 
-  irrigationZone1.setSoilMoisture(0,86); // pin for analog read, percentage to run at
-  irrigationZone1.setI2cSoilMoistureSensor(); // use the i2c interface to use the ads class
-  irrigationZone1.setSoilMoistureLimits(465, 228);
+  // Garden Irrigation
+  IrrigationRelay * irz1 = new IrrigationRelay(0, &mcp);
+  irz1->setup();
+  char irrigationName_1[] = "garden";
+  irz1->setName(irrigationName_1);
+  irz1->setRuntime(1);
+  irz1->setStartTime(17,1); // hour, minute
+  irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
+  irz1->setSoilMoistureLimits(465, 228); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 1 %s setup done", irz1->name);
+  IrrigationZones.push_back(irz1);
 
-  light.setup();
+  // Pots and Plants Irrigation
+  IrrigationRelay * irz2 = new IrrigationRelay(1, &mcp);
+  irz2->setup();
+  char irrigationName_2[] = "patio_pots";
+  irz2->setName(irrigationName_2);
+  irz2->setRuntime(1);
+  irz2->setStartTime(17,2); // hour, minute
+  irz2->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
+  irz2->setSoilMoistureLimits(465, 228); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
+  IrrigationZones.push_back(irz2);
 
   // Start the server
   server.on("/debug", handleDebug);
-  server.on("/irrigation_1", handleIrrigationZone1);
-  server.on("/light", handleLight);
   server.on("/status", handleStatus);
+  server.on("/irrigation", handleIrrigation);
 
   server.begin();
 }
@@ -130,12 +136,14 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
 
   JsonObject switches = doc.createNestedObject("switches");
-  switches["irrigation"]["state"] = irrigationZone1.state();
-  switches["light"]["state"] = irrigationZone1.state();
+  //JsonObject sensors = doc.createNestedObject("sensors");
+  for (IrrigationRelay * relay : IrrigationZones) {
+   switches[relay->name]["state"] = relay->on ? "on" : "off";
+   switches[relay->name]["soilMoistureLevel"] = relay->soilMoistureLevel;
+   switches[relay->name]["soilMoisturePercentage"] = relay->soilMoisturePercentage;
+  } 
 
-  JsonObject sensors = doc.createNestedObject("sensors");
-  sensors["soilMoistureLevel"] = irrigationZone1.soilMoistureLevel;
-  sensors["soilMoisturePercentage"] = irrigationZone1.soilMoisturePercentage;
+  doc["irrigationReturnCode"] = irrigationAction;
   doc["debug"] = debug;
 
   char timeString[20];
@@ -155,46 +163,71 @@ void handleStatus() {
   }
 }
 
-void handleIrrigationZone1() {
-  if (server.arg("state") == "status") {
-    server.send(200, "text/plain", irrigationZone1.on ? "1" : "0");
-  } else if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning irrigation on at %ld", irrigationZone1.onTime);
-    irrigationZone1.switchOn();
-    server.send(200, "text/plain");
-  } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning irrigation off at %ld", irrigationZone1.offTime);
-    irrigationZone1.switchOff();
-    server.send(200, "text/plain");
-  } else {
-    server.send(404, "text/plain", "ERROR: unknown light command");
-  }
-}
+void handleIrrigation() {
+  bool matchFound = false;
+  char suppliedZone[15];
+  server.arg("zone").toCharArray(suppliedZone, 15);
 
-void handleLight() {
-  if (server.arg("state") == "status") {
-    server.send(200, "text/plain", light.on ? "1" : "0");
-  } else if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %ld", light.onTime);
-    light.switchOn();
-    server.send(200, "text/plain");
-  } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %ld", light.offTime);
-    light.switchOff();
-    server.send(200, "text/plain");
-  } else {
-    server.send(404, "text/plain", "ERROR: unknown light command");
+  for (IrrigationRelay * relay : IrrigationZones) {
+    if (debug) {
+      syslog.logf(LOG_INFO, "DEBUG: irrigation handling: zone arg: %s, relay name: %s", suppliedZone, relay->name);
+    }
+
+    if (server.arg("zone") == relay->name) {
+      matchFound = true;
+      if (server.arg("state") == "status") {
+	server.send(200, "text/plain", relay->on ? "1" : "0");
+	return;
+      } else if (server.arg("state") == "on") {
+	syslog.logf(LOG_INFO, "Turning irrigation zone %s on by API request at %ld", relay->name, relay->onTime);
+	relay->switchOn();
+	server.send(200, "text/plain");
+	return;
+      } else if (server.arg("state") == "off") {
+	syslog.logf(LOG_INFO, "Turning irrigation zone %s off by API request at %ld", relay->name, relay->onTime);
+	relay->switchOff();
+	server.send(200, "text/plain");
+	return;
+      } else {
+	char msg[40];
+	sprintf(msg, "ERROR: state command not specified for %s", relay->name);
+	server.send(404, "text/plain", msg);
+      }
+    }
   }
+  if (!matchFound) {
+    char msg[60];
+    sprintf(msg, "ERROR: irrigation zone %s not found", suppliedZone);
+    server.send(404, "text/plain", msg);
+    return;
+  }
+
+  server.send(404, "text/plain", "ERROR: Unknown irrigation command");
 }
 
 time_t prevTime = 0;;
+int prevIrrigationAction = 0;
 void loop() {
   ArduinoOTA.handle();
 
   time_t now = time(nullptr);
   if ( now != prevTime ) {
     if ( now % 5 == 0 ) {
-      irrigationZone1.handle();
+      for (IrrigationRelay * relay : IrrigationZones) {
+	irrigationAction = relay->handle();
+	if ( irrigationAction == 1 ) {
+	  syslog.logf(LOG_INFO, "scheduled irrigation started for zone %s", relay->name);
+	} 
+	if ( irrigationAction == 2 ) {
+	  syslog.logf(LOG_INFO, "scheduled irrigation stopped for zone %s", relay->name);
+	}
+	if ( prevIrrigationAction != 3 && irrigationAction == 3 ) {
+	  syslog.logf(LOG_INFO, "scheduled irrigation for zone %s not started because the soil's wet", relay->name);
+	}
+	if ( prevIrrigationAction != 4 && irrigationAction == 4 ) {
+	  syslog.logf(LOG_INFO, "scheduled irrigation stopped for zone %s because the soil's wet", relay->name);
+	}
+      }
     }
   }
   prevTime = now;
