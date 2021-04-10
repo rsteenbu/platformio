@@ -9,6 +9,7 @@
 #include <Vector.h>
 
 #include <my_relay.h>
+//#include <my_veml.h>
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -46,6 +47,11 @@ Vector<IrrigationRelay*> IrrigationZones;
 
 IrrigationRelay * storage_array[8];
 
+ScheduleRelay * schedTest1 = new ScheduleRelay(TX_PIN);
+DuskToDawnScheduleRelay * d2dSchedTest1 = new DuskToDawnScheduleRelay(TX_PIN);
+
+//Veml yveml;
+
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting up");
@@ -63,7 +69,7 @@ void setup() {
   char msg[40];
   sprintf(msg, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
   Serial.println(msg);
-  syslog.logf(LOG_INFO, msg);
+  syslog.log(LOG_INFO, msg);
 
   // Setup OTA Update
   ArduinoOTA.begin();
@@ -74,13 +80,23 @@ void setup() {
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
   mcp.begin();      // use default address 0
 
+  // setup the light sensor
+//  if (!myveml.setup()) {
+//    syslog.log(LOG_INFO, "VEML setup failed");
+//  }
+
+  schedTest1->setup("schedule_test");
+  schedTest1->setOnOffTimes(10, 42, 10, 43);
+  d2dSchedTest1->setup("dusk_to_dawn_test");
+  if (!d2dSchedTest1->setVemlLightSensor()) {
+    syslog.log(LOG_INFO, "ERROR: setVemlLightSensor() failed");
+  }
+
   IrrigationZones.setStorage(storage_array);
 
   // Garden Irrigation
-  IrrigationRelay * irz1 = new IrrigationRelay(0, &mcp);
-  irz1->setup();
-  char irrigationName_1[] = "garden";
-  irz1->setName(irrigationName_1);
+  IrrigationRelay * irz1 = new IrrigationRelay(0, &mcp, true);
+  irz1->setup("garden");
   irz1->setRuntime(1);
   irz1->setStartTime(17,1); // hour, minute
   irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
@@ -89,14 +105,12 @@ void setup() {
   IrrigationZones.push_back(irz1);
 
   // Pots and Plants Irrigation
-  IrrigationRelay * irz2 = new IrrigationRelay(1, &mcp);
-  irz2->setup();
-  char irrigationName_2[] = "patio_pots";
-  irz2->setName(irrigationName_2);
+  IrrigationRelay * irz2 = new IrrigationRelay(1, &mcp, true);
+  irz2->setup("patio_pots");
   irz2->setRuntime(1);
   irz2->setStartTime(17,2); // hour, minute
-  irz2->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
-  irz2->setSoilMoistureLimits(465, 228); // dry, wet
+  irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
+  irz2->setSoilMoistureLimits(727, 310); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
   IrrigationZones.push_back(irz2);
 
@@ -104,8 +118,14 @@ void setup() {
   server.on("/debug", handleDebug);
   server.on("/status", handleStatus);
   server.on("/irrigation", handleIrrigation);
+  server.on("/d2d", handleD2D);
 
   server.begin();
+}
+
+void handleD2D() {
+  if (server.arg("level") == "status") {
+  }
 }
 
 void handleDebug() {
@@ -136,13 +156,14 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
 
   JsonObject switches = doc.createNestedObject("switches");
-  //JsonObject sensors = doc.createNestedObject("sensors");
+  JsonObject sensors = doc.createNestedObject("sensors");
   for (IrrigationRelay * relay : IrrigationZones) {
    switches[relay->name]["state"] = relay->on ? "on" : "off";
    switches[relay->name]["soilMoistureLevel"] = relay->soilMoistureLevel;
    switches[relay->name]["soilMoisturePercentage"] = relay->soilMoisturePercentage;
   } 
 
+  sensors["luxLevel"] = d2dSchedTest1->lightLevel;
   doc["irrigationReturnCode"] = irrigationAction;
   doc["debug"] = debug;
 
@@ -213,6 +234,15 @@ void loop() {
   time_t now = time(nullptr);
   if ( now != prevTime ) {
     if ( now % 5 == 0 ) {
+
+      irrigationAction = schedTest1->handle();
+      if ( irrigationAction == 1 ) {
+	syslog.logf(LOG_INFO, "scheduled light '%s' turned on", schedTest1->name);
+      } 
+      if ( irrigationAction == 2 ) {
+	syslog.logf(LOG_INFO, "scheduled light '%s' turned off", schedTest1->name);
+      } 
+
       for (IrrigationRelay * relay : IrrigationZones) {
 	irrigationAction = relay->handle();
 	if ( irrigationAction == 1 ) {
@@ -228,6 +258,14 @@ void loop() {
 	  syslog.logf(LOG_INFO, "scheduled irrigation stopped for zone %s because the soil's wet", relay->name);
 	}
       }
+
+      irrigationAction = d2dSchedTest1->handle();
+      if ( irrigationAction == 1 ) {
+	syslog.logf(LOG_INFO, "D2D light '%s' turned on", d2dSchedTest1->name);
+      } 
+      if ( irrigationAction == 2 ) {
+	syslog.logf(LOG_INFO, "D2D light '%s' turned off", d2dSchedTest1->name);
+      } 
     }
   }
   prevTime = now;

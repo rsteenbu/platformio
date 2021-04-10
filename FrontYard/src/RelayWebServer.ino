@@ -74,9 +74,9 @@ void setup() {
   pinMode(PIR_PIN, INPUT);
 
   // Setup the Relays
-  xmasLights.setup();
-  lvLights.setup();
-  irrigation.setup();
+  xmasLights.setup("xmaslights");
+  lvLights.setup("lvlights");
+  irrigation.setup("irrigation");
   irrigation.setEveryDayOn();
   irrigation.setRuntime(10);
   irrigation.setStartTime(8, 15);
