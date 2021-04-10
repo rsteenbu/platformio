@@ -10,6 +10,7 @@
 #include "Adafruit_MCP23017.h"
 #include <SPI.h>
 #include <Adafruit_ADS1X15.h>
+#include <my_veml.h>
 
 class IrrigationZones {
 
@@ -42,7 +43,11 @@ class Relay {
       onVal = HIGH;
       offVal = LOW;
     }
-    Relay (int a, bool b): pin(a), backwards(b) {
+    Relay (int a, Adafruit_MCP23017* b, bool c) {
+      pin = a;
+      mcp = b;
+      backwards = c;
+      i2cRelay = true;
       if (backwards) {
         onVal = LOW;
         offVal = HIGH;
@@ -51,10 +56,14 @@ class Relay {
         offVal = LOW;
       }
     }
-
-    void setName(char*a) {
-      name = new char[strlen(a)+1];
-      strcpy(name,a);
+    Relay (int a, bool b): pin(a), backwards(b) {
+      if (backwards) {
+        onVal = LOW;
+        offVal = HIGH;
+      } else {
+        onVal = HIGH;
+        offVal = LOW;
+      }
     }
 
     void setBackwards(bool a) {
@@ -69,7 +78,10 @@ class Relay {
       return scheduleOverride;
     }
 
-    void setup() {
+    void setup(const char* a) {
+      name = new char[strlen(a)+1];
+      strcpy(name,a);
+
       if (i2cRelay) {
 	(*mcp).pinMode(pin, OUTPUT);
 	(*mcp).digitalWrite(pin,offVal);
@@ -107,15 +119,10 @@ class Relay {
 };
 
 class TimerRelay: public Relay {
-  int soilPin;
-  float soilMoisturePercentageToRun = -1;
-
   public:
     int runTime = 0;
     int startHour;
     int startMinute;
-    double soilMoisturePercentage;
-    double soilMoistureLevel;
     Array<int,7> runDays;
 
     //constructurs
@@ -123,6 +130,10 @@ class TimerRelay: public Relay {
       setEveryDayOn();
     }
     TimerRelay (int a, Adafruit_MCP23017* b): Relay(a, b) {
+      setEveryDayOn();
+    }
+
+    TimerRelay (int a, Adafruit_MCP23017* b, bool c): Relay(a, b, c) {
       setEveryDayOn();
     }
 
@@ -217,11 +228,11 @@ class TimerRelay: public Relay {
 
 class IrrigationRelay: public TimerRelay {
   int soilPin;
-  float soilMoisturePercentageToRun = -1;
   bool i2cSoilMoistureSensor = false;
+  int soilMoisturePercentageToRun = -1;
   // default limits - analog pin read frontyard
-  int drySoilMoistureLevel = 660;
-  int wetSoilMoistureLevel = 330;
+  double drySoilMoistureLevel = 660;
+  double wetSoilMoistureLevel = 330;
   Adafruit_ADS1015 ads;     /* Use this for the 12-bit version */
 
   public:
@@ -231,6 +242,7 @@ class IrrigationRelay: public TimerRelay {
     //constructors
     IrrigationRelay (int a): TimerRelay(a) { }
     IrrigationRelay (int a, Adafruit_MCP23017* b): TimerRelay(a, b) { }
+    IrrigationRelay (int a, Adafruit_MCP23017* b, bool c): TimerRelay(a, b, c) { }
 
     // turn on the soilMoisture check at soilMoisturePercentageToRun
     void setSoilMoistureSensor(int a, int b) {
@@ -251,20 +263,22 @@ class IrrigationRelay: public TimerRelay {
     }
 
     bool checkSoilMoisture() {
+      double calibratedSoilMoistureLevel = soilMoistureLevel;
+
       if (i2cSoilMoistureSensor) {
 	soilMoistureLevel = ads.readADC_SingleEnded(soilPin);
       } else {
 	soilMoistureLevel = analogRead(soilPin);
       }
 
-      if (soilMoistureLevel > drySoilMoistureLevel) {
-	soilMoistureLevel = drySoilMoistureLevel;
+      if (calibratedSoilMoistureLevel > drySoilMoistureLevel) {
+	calibratedSoilMoistureLevel = drySoilMoistureLevel;
       }
-      if (soilMoistureLevel < wetSoilMoistureLevel) {
-	soilMoistureLevel = wetSoilMoistureLevel;
+      if (calibratedSoilMoistureLevel < wetSoilMoistureLevel) {
+	calibratedSoilMoistureLevel = wetSoilMoistureLevel;
       }
       
-      soilMoisturePercentage = 100 - ((soilMoistureLevel - wetSoilMoistureLevel) / (drySoilMoistureLevel - wetSoilMoistureLevel) * 100);
+      soilMoisturePercentage = 100 - (((calibratedSoilMoistureLevel - wetSoilMoistureLevel) / (drySoilMoistureLevel - wetSoilMoistureLevel)) * 100);
       
       return soilMoisturePercentage < soilMoisturePercentageToRun;
     }
@@ -298,33 +312,101 @@ class IrrigationRelay: public TimerRelay {
    }
 };
 
-
 class ScheduleRelay: public Relay {
+  const int MAX_SLOTS = 4;
+
+  const int hourIndex = 0;
+  const int minuteIndex = 1;
+  int onTimes[4][2];
+  int offTimes[4][2];
+  int slotsTaken = -1;
+
+  bool findTime(int hour, int min, int timeArray[4][2] ) {
+    for (int i = 0; i <= slotsTaken; i++) {
+      if (timeArray[i][hourIndex] == hour && timeArray[i][minuteIndex] == min) {
+	return true;
+      }
+    }
+    return false;
+  }
+
+  public:
+    ScheduleRelay (int a): Relay(a) {}
+
+    //on hour, on minute, off hour, off minute
+    bool setOnOffTimes(int a, int b, int c, int d) {
+      if (slotsTaken == MAX_SLOTS) {
+	return false;
+      }
+      slotsTaken++;
+    
+      onTimes[slotsTaken][hourIndex] = a;
+      onTimes[slotsTaken][minuteIndex] = b;
+      offTimes[slotsTaken][hourIndex] = c;
+      offTimes[slotsTaken][minuteIndex] = d;
+
+      return true;
+    }
+
+   int handle() {
+     time_t now = time(nullptr);
+     struct tm *timeinfo = localtime(&now);
+     int currHour = timeinfo->tm_hour;
+     int currMinute = timeinfo->tm_min;
+
+     if ( scheduleOverride ) {
+       return 5; 
+     }
+
+     if ( ! on && findTime(currHour, currMinute, onTimes) ) {
+       switchOn();
+       return 1;
+     }
+
+     if ( on && findTime(currHour, currMinute, offTimes) ) {
+       switchOff();
+       return 2;
+     }
+
+     return 0;
+   }
+};
+
+class DuskToDawnScheduleRelay: public ScheduleRelay {
   int const timesToSample = 10;
   int timesLight = 0;
   int timesDark = 0;
+  int dusk = 100;
+  int nightOffHour = 0;
+  int morningOnHour = 5;
+  Veml veml;
+  bool vemlSensor = false;
 
   public:
     int lightLevel;
-    int dusk = 100;
-    int nightOffHour = 0;
-    int morningOnHour = 5;
 
-    ScheduleRelay(int a): Relay(a) {}
+    DuskToDawnScheduleRelay (int a): ScheduleRelay(a) {}
 
-    void setDusk(int a) {
-      dusk = a;
-    }
-    void setLightLevel(int a) {
-      lightLevel = a;
-    }
-  
-    void setNightOffHour(int a) {
-      nightOffHour = a;
+    bool setVemlLightSensor() {
+      vemlSensor = true;
+
+      if (veml.setup()) {
+	return true;
+      } else { 
+	return false;
+      }
     }
 
     void setMorningOnHour(int a) {
       morningOnHour = a;
+    }
+
+    void setNightOffHour(int a) {
+      nightOffHour = a;
+    }
+
+    void setDusk(int a) {
+      dusk = a;
     }
 
    int handle() {
@@ -332,12 +414,14 @@ class ScheduleRelay: public Relay {
      struct tm *timeinfo = localtime(&now);
      int currHour = timeinfo->tm_hour;
 
+     lightLevel = veml.readLux();
+
      if ( scheduleOverride ) {
        return 5; 
      }
-  
+
      // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
-     if ( lightLevel < dusk && !on && !( currHour >= nightOffHour && currHour <= morningOnHour ) ) {
+     if ( lightLevel < dusk && ! on && !( currHour >= nightOffHour && currHour <= morningOnHour ) ) {
        timesLight = 0;
        timesDark++;
 
@@ -354,12 +438,13 @@ class ScheduleRelay: public Relay {
 
        if (timesLight > timesToSample) {
 	 switchOff();
-	 return 0;
+	 return 2;
        }
      }
+
+     return 0;
    }
 };
-
 
 #endif
 

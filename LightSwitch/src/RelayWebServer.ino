@@ -39,15 +39,14 @@ const int GPIO2_PIN=2;
 
 StaticJsonDocument<200> doc;
 
-Relay lightSwitch(TX_PIN);
-//TimerRelay lightSwitch(TX_PIN);
+Relay * lightSwitch = new ScheduleRelay(TX_PIN);
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting up");
 
   // Setup the Relay
-  lightSwitch.setup();
+  lightSwitch->setup("lightswitch");
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -104,17 +103,13 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
 
-  switches["light"]["state"] = lightSwitch.state();
+  switches["light"]["state"] = lightSwitch->state();
   doc["debug"] = debug;
 
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
   strftime (timeString,20,"%D %T",timeinfo);
   doc["time"] = timeString;
-  doc["seconds"] = timeinfo->tm_sec;
-  doc["wday"] = timeinfo->tm_wday;
-  doc["mktime"] = mktime(timeinfo);
-  doc["now"] = now;
 
   size_t jsonDocSize = measureJsonPretty(doc);
   if (jsonDocSize > JSON_SIZE) {
@@ -130,14 +125,14 @@ void handleStatus() {
 
 void handleLight() {
   if (server.arg("state") == "status") {
-    server.send(200, "text/plain", lightSwitch.on ? "1" : "0");
+    server.send(200, "text/plain", lightSwitch->on ? "1" : "0");
   } else if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch.onTime);
-    lightSwitch.switchOn();
+    syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch->onTime);
+    lightSwitch->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch.offTime);
-    lightSwitch.switchOff();
+    syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch->offTime);
+    lightSwitch->switchOff();
     server.send(200, "text/plain");
   } else {
     server.send(404, "text/plain", "ERROR: uknonwn light command");
