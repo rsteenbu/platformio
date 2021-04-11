@@ -27,37 +27,17 @@ WiFiUDP udpClient;
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
-// Pin for Relay
-//uint8_t RELAY_PIN = 2;       // Use the TX pin to control the relay
+int debug = 0;
+
+const uint8_t RELAY_PIN = D1;
 const uint8_t REED_OPEN_PIN = D2;
 const uint8_t REED_CLOSED_PIN = D3;
 const uint8_t LED_OPEN_PIN = D6;
 const uint8_t LED_CLOSED_PIN = D5;
-
-// DOOR states and status
-const int DOOR_OPEN = 0;
-const int DOOR_OPENING = 1;
-const int DOOR_CLOSED = 2;
-const int DOOR_CLOSING = 3;
-int doorStatus;
-
-int debug = 0;
-
-Relay * garageDoor = new Relay(D1);
+GarageDoorRelay * garageDoor = new GarageDoorRelay(RELAY_PIN, REED_OPEN_PIN, REED_CLOSED_PIN, LED_OPEN_PIN, LED_CLOSED_PIN);
 
 void setup() {
   Serial.begin(115200);
-
-  // Since the other end of the reed switch is connected to ground, we need
-  // to pull-up the reed switch pin internally.
-  pinMode(REED_OPEN_PIN, INPUT_PULLUP);
-  pinMode(LED_OPEN_PIN, OUTPUT);
-  pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
-  pinMode(LED_CLOSED_PIN, OUTPUT);
-
-  // prepare LED Pins
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -87,7 +67,6 @@ void setup() {
   server.on("/status", handleStatus);
   server.on("/door", handleDoor);
   server.begin();
-
 }
 
 void handleDebug() {
@@ -118,7 +97,7 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
 
   JsonObject switches = doc.createNestedObject("switches");
-  switches[garageDoor->name]["state"] = doorStatusWord();
+  switches[garageDoor->name]["state"] = garageDoor->statusWord();
 
   doc["debug"] = debug;
 
@@ -141,7 +120,7 @@ void handleStatus() {
 
 void handleDoor() {
   if (server.arg("command") == "status") {
-    server.send(200, "text/plain", doorStatusWord());
+    server.send(200, "text/plain", garageDoor->statusWord());
   } else if (server.arg("command") == "operate") {
     syslog.log(LOG_INFO, "Operating Garage Door");
     garageDoor->operate();
@@ -151,61 +130,11 @@ void handleDoor() {
   }
 }
 
-const char* doorStatusWord() {
-  switch (doorStatus) {
-    case 0:
-      return "OPEN";
-      break;
-    case 1:
-      return "OPENING";
-      break;
-    case 2:
-      return "CLOSED";
-      break;
-    case 3:
-      return "CLOSING";
-      break;
-  }
-
-  return "UKNOWN";
-}
-
 void loop() {
   ArduinoOTA.handle();
 
-  int doorOpen = digitalRead(REED_OPEN_PIN); // Check to see of the door is open
-  if (doorOpen == LOW) { // Door detected is in the open position
-    if (doorStatus != DOOR_OPEN) {
-      syslog.log(LOG_INFO, "Garage door detected open");
-      digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
-      doorStatus = DOOR_OPEN;
-    }
-  } else { // Door is not in the open position
-    if (doorStatus == DOOR_OPEN ) {
-      syslog.log(LOG_INFO, "Garage door closing");
-      digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
-      doorStatus = DOOR_CLOSING;
-    }
-  }
-  
-  int doorClosed = digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
-  if (doorClosed == LOW) // Door detected in the closed position
-  {
-    if (doorStatus != DOOR_CLOSED) {
-      syslog.log(LOG_INFO, "Garage door detected closed");
-      digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
-      doorStatus = DOOR_CLOSED;
-    }
-  } else { // Door is not in the closed position
-    if (doorStatus == DOOR_CLOSED) {
-      syslog.log(LOG_INFO, "Garage door opening");
-      digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
-      doorStatus = DOOR_OPENING;
-    }
-  }
-
-  if (debug == 2) {
-    syslog.logf(LOG_INFO, "Reed Open Status: %d; Reed Closed Status: %d", doorOpen, doorClosed);
+  if (garageDoor->handle()) {
+    syslog.logf(LOG_INFO, "Garage door %s", garageDoor->statusWord());
   }
 
   server.handleClient();

@@ -110,7 +110,6 @@ void handleStatus() {
   struct tm *timeinfo = localtime(&now);
   strftime (timeString,20,"%D %T",timeinfo);
   doc["time"] = timeString;
-  const char* testCharArray = testFunc();
   doc["string"] = testCharArray;
 
   size_t jsonDocSize = measureJsonPretty(doc);
@@ -123,10 +122,6 @@ void handleStatus() {
     serializeJsonPretty(doc, httpResponse);
     server.send(500, "text/plain", httpResponse);
   }
-}
-
-const char* testFunc() {
-  return "string from function";
 }
 
 void handleLight() {
