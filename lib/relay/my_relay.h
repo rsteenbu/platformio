@@ -110,13 +110,6 @@ class Relay {
       }
     }
 
-    void operate() {
-	onTime = time(nullptr);
-        switchOn();
-	delay(100);
-        switchOff();
-    }
-
     const char* state() {
       if (on) {
         return "on";
@@ -124,6 +117,107 @@ class Relay {
         return "off";
       }
     }
+};
+
+class GarageDoorRelay: public Relay {
+  int REED_OPEN_PIN;
+  int REED_CLOSED_PIN;
+  int LED_OPEN_PIN = -1;
+  int LED_CLOSED_PIN = -1;
+  const int DOOR_OPEN = 0;
+  const int DOOR_OPENING = 1;
+  const int DOOR_CLOSED = 2;
+  const int DOOR_CLOSING = 3;
+
+  public:
+    //constructurs
+    GarageDoorRelay(int a, int b, int c ): Relay(a) {
+      REED_OPEN_PIN = b;
+      REED_CLOSED_PIN = c;
+
+      // Since the other end of the reed switch is connected to ground, we need
+      // to pull-up the reed switch pin internally.
+      pinMode(REED_OPEN_PIN, INPUT_PULLUP);
+      pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
+    }
+    GarageDoorRelay(int a, int b, int c, int d, int e ): Relay(a) {
+      REED_OPEN_PIN = b;
+      REED_CLOSED_PIN = c;
+      LED_OPEN_PIN = d;
+      LED_CLOSED_PIN = e;
+
+      // Since the other end of the reed switch is connected to ground, we need
+      // to pull-up the reed switch pin internally.
+      pinMode(REED_OPEN_PIN, INPUT_PULLUP);
+      pinMode(LED_OPEN_PIN, OUTPUT);
+      pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
+      pinMode(LED_CLOSED_PIN, OUTPUT);
+
+      // prepare LED Pins
+      pinMode(LED_BUILTIN, OUTPUT);
+      digitalWrite(LED_BUILTIN, LOW);
+    }
+
+    int status;
+
+    void operate() {
+	onTime = time(nullptr);
+        switchOn();
+	delay(100);
+        switchOff();
+    }
+
+    const char* statusWord() {
+      switch (status) {
+	case 0:
+	  return "OPEN";
+	  break;
+	case 1:
+	  return "OPENING";
+	  break;
+	case 2:
+	  return "CLOSED";
+	  break;
+	case 3:
+	  return "CLOSING";
+	  break;
+      }
+      return "UKNOWN";
+    }
+
+   int handle() {
+     int doorOpen = digitalRead(REED_OPEN_PIN); // Check to see of the door is open
+     if (doorOpen == LOW) { // Door detected is in the open position
+       if (status != DOOR_OPEN) {
+	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
+	 status = DOOR_OPEN;
+	 return 1;
+       }
+     } else { // Door is not in the open position
+       if (status == DOOR_OPEN ) {
+	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
+	 status = DOOR_CLOSING;
+	 return 1;
+       }
+     }
+
+     int doorClosed = digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
+     if (doorClosed == LOW) // Door detected in the closed position
+     {
+       if (status != DOOR_CLOSED) {
+	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
+	 status = DOOR_CLOSED;
+	 return 1;
+       }
+     } else { // Door is not in the closed position
+       if (status == DOOR_CLOSED) {
+	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
+	 status = DOOR_OPENING;
+	 return 1;
+       }
+     }
+     return 0;
+   }
 };
 
 class TimerRelay: public Relay {
