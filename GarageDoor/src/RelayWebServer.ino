@@ -1,98 +1,49 @@
-/*
-    This sketch demonstrates how to set up a simple HTTP-like server.
-    The server will set a GPIO pin depending on the request
-      http://server_ip/gpio/0 will set the GPIO2 low,
-      http://server_ip/gpio/1 will set the GPIO2 high
-    server_ip is the IP address of the ESP8266 module, will be
-    printed to Serial when the module is connected.
-*/
-
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
+#include <ArduinoJson.h>
 
-#ifndef STASSID
-#define STASSID "***REMOVED***"
-#define STAPSK  "***REMOVED***"
-#endif
+#include <my_relay.h>
 
-// Create an instance of the server
-// specify the port to listen on as an argument
-const char* ssid = STASSID;
-const char* password = STAPSK;
-WiFiServer server(80);
+#include <time.h>                       // time() ctime()
+#include <sys/time.h>                   // struct timeval
+#include <coredecls.h>                  // settimeofday_cb()
+#include <TZ.h>
 
-// Syslog server connection info
-#define SYSLOG_SERVER "ardupi4"
-#define SYSLOG_PORT 514
 // This device info
-#define DEVICE_HOSTNAME "iot-garagedoor"
 #define APP_NAME "garagedoor"
+#define JSON_SIZE 500
+#define MYTZ TZ_America_Los_Angeles
+
+ESP8266WebServer server(80);
+
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
-int debug = 0;
-
 // Pin for Relay
 //uint8_t RELAY_PIN = 2;       // Use the TX pin to control the relay
-uint8_t RELAY_PIN = D1;
-uint8_t REED_OPEN_PIN = D2;
-uint8_t REED_CLOSED_PIN = D3;
-uint8_t LED_OPEN_PIN = D6;
-uint8_t LED_CLOSED_PIN = D5;
+const uint8_t REED_OPEN_PIN = D2;
+const uint8_t REED_CLOSED_PIN = D3;
+const uint8_t LED_OPEN_PIN = D6;
+const uint8_t LED_CLOSED_PIN = D5;
 
 // DOOR states and status
-int DOOR_OPEN = 0;
-int DOOR_OPENING = 1;
-int DOOR_CLOSED = 2;
-int DOOR_CLOSING = 3;
+const int DOOR_OPEN = 0;
+const int DOOR_OPENING = 1;
+const int DOOR_CLOSED = 2;
+const int DOOR_CLOSING = 3;
 int doorStatus;
 
-// Distance Sensor
-// vin == black
-// grnd == white
-bool relayOn = false;
+int debug = 0;
 
-void setupOTA() {
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_FS
-      type = "filesystem";
-    }
-
-    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
-  });
-  ArduinoOTA.begin();
-  
-}
+Relay * garageDoor = new Relay(D1);
 
 void setup() {
   Serial.begin(115200);
@@ -104,28 +55,119 @@ void setup() {
   pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
   pinMode(LED_CLOSED_PIN, OUTPUT);
 
-  // prepare LED and Relay PINs
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
+  // prepare LED Pins
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
   WiFi.hostname(DEVICE_HOSTNAME);
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   while (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Connecting to network...");
     delay(500);
   }
 
-  syslog.logf(LOG_INFO, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
+  char msg[40];
+  sprintf(msg, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
+  Serial.println(msg);
+  syslog.log(LOG_INFO, msg);
 
   // Setup OTA Update
-  setupOTA();
+  ArduinoOTA.begin();
+
+  configTime(MYTZ, "pool.ntp.org");
+
+  garageDoor->setup("garage_door");
 
   // Start the server
+  // Start the server
+  server.on("/debug", handleDebug);
+  server.on("/status", handleStatus);
+  server.on("/door", handleDoor);
   server.begin();
+
+}
+
+void handleDebug() {
+  if (server.arg("level") == "status") {
+    char msg[40];
+    sprintf(msg, "Debug level: %d", debug);
+    server.send(200, "text/plain", msg);
+  } else if (server.arg("level") == "0") {
+    syslog.log(LOG_INFO, "Debug level 0");
+    debug = 0;
+    server.send(200, "text/plain");
+  } else if (server.arg("level") == "1") {
+    syslog.log(LOG_INFO, "Debug level 1");
+    debug = 1;
+    server.send(200, "text/plain");
+  } if (server.arg("level") == "2") {
+    syslog.log(LOG_INFO, "Debug level 2");
+    debug = 2;
+    server.send(200, "text/plain");
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown debug command");
+  }
+}
+
+void handleStatus() {
+  time_t now;
+  now = time(nullptr);
+  StaticJsonDocument<JSON_SIZE> doc;
+
+  JsonObject switches = doc.createNestedObject("switches");
+  switches[garageDoor->name]["state"] = doorStatusWord();
+
+  doc["debug"] = debug;
+
+  char timeString[20];
+  struct tm *timeinfo = localtime(&now);
+  strftime (timeString,20,"%D %T",timeinfo);
+  doc["time"] = timeString;
+
+  size_t jsonDocSize = measureJsonPretty(doc);
+  if (jsonDocSize > JSON_SIZE) {
+    char msg[40];
+    sprintf(msg, "ERROR: JSON message too long, %d", jsonDocSize);
+    server.send(500, "text/plain", msg);
+  } else {
+    String httpResponse;
+    serializeJsonPretty(doc, httpResponse);
+    server.send(500, "text/plain", httpResponse);
+  }
+}
+
+void handleDoor() {
+  if (server.arg("command") == "status") {
+    server.send(200, "text/plain", doorStatusWord());
+  } else if (server.arg("command") == "operate") {
+    syslog.log(LOG_INFO, "Operating Garage Door");
+    garageDoor->operate();
+    server.send(200, "text/plain");
+  } else {
+    server.send(404, "text/plain", "ERROR: uknonwn light command");
+  }
+}
+
+const char* doorStatusWord() {
+  switch (doorStatus) {
+    case 0:
+      return "OPEN";
+      break;
+    case 1:
+      return "OPENING";
+      break;
+    case 2:
+      return "CLOSED";
+      break;
+    case 3:
+      return "CLOSING";
+      break;
+  }
+
+  return "UKNOWN";
 }
 
 void loop() {
@@ -165,73 +207,6 @@ void loop() {
   if (debug == 2) {
     syslog.logf(LOG_INFO, "Reed Open Status: %d; Reed Closed Status: %d", doorOpen, doorClosed);
   }
-  // Check if a client has connected
-  WiFiClient client = server.available();
-  if (!client) {
-    return;
-  }
 
-  // setup a new client
-  client.setTimeout(5000); // default is 1000
-
-  // Read the first line of the request
-  String req = client.readStringUntil('\r');
-
-  // Tell the client we're ok
-  client.println("HTTP/1.1 200 OK");
-  client.println("Content-Type: text/html");
-  client.println("Connection: close");
-  client.println();
-
-  // Check the request and determine what to do with the switch relay
-  if (req.indexOf(F("/debug/0")) != -1) {
-    syslog.log(LOG_INFO, "Turning debug off");
-    debug = 0;
-  } else if (req.indexOf(F("/debug/1")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 1");
-    debug = 1;
-  } else if (req.indexOf(F("/debug/2")) != -1) {
-    syslog.log(LOG_INFO, "Debug level 2");
-    debug = 2;
-  } else if (req.indexOf(F("/status")) != -1) {
-    switch (doorStatus) {
-      case 0:
-        client.print("OPEN");
-        break;
-      case 1:
-        client.print("OPENING");
-        break;
-      case 2:
-        client.print("CLOSED");
-        break;
-      case 3:
-        client.print("CLOSING");
-        break;
-    }
-  } else if (req.indexOf(F("/operate")) != -1) {
-    syslog.log(LOG_INFO, "Operating garagedoor");
-    if (debug == 1) {
-      syslog.log(LOG_INFO, "Turning garagedoor relay on");
-    }
-    digitalWrite(RELAY_PIN, HIGH);
-    delay(100);
-    if (debug == 1) {
-      syslog.log(LOG_INFO, "Turning garagedoor relay off");
-    }
-    digitalWrite(RELAY_PIN, LOW);
-    client.print("OK");
-  } else {
-    syslog.logf("Received invalid request: %s", req.c_str());
-  }
-
-  // read/ignore the rest of the request
-  // do not client.flush(): it is for output only, see below
-  while (client.available()) {
-    // byte by byte is not very efficient
-    client.read();
-  }
-
-  // The client will actually be *flushed* then disconnected
-  // when the function returns and 'client' object is destroyed (out-of-scope)
-  // flush = ensure written data are received by the other side
+  server.handleClient();
 }

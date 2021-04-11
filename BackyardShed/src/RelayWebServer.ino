@@ -6,7 +6,10 @@
 #include <Syslog.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
+
 #include <Vector.h>
+#include <Wire.h>
+#include "Adafruit_MCP23017.h"
 
 #include <my_relay.h>
 //#include <my_veml.h>
@@ -16,18 +19,10 @@
 #include <coredecls.h>                  // settimeofday_cb()
 #include <TZ.h>
 
-#include <Wire.h>
-#include "Adafruit_MCP23017.h"
-
 // This device info
 #define APP_NAME "switch"
 #define JSON_SIZE 500
 #define MYTZ TZ_America_Los_Angeles
-// ESP-01 Pins
-const int TX_PIN=1;
-const int RX_PIN=3;
-const int GPIO0_PIN=0;
-const int GPIO2_PIN=2;
 
 ESP8266WebServer server(80);
 
@@ -36,6 +31,12 @@ WiFiUDP udpClient;
 
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+
+// ESP-01 Pins
+const int TX_PIN=1;
+const int RX_PIN=3;
+const int GPIO0_PIN=0;
+const int GPIO2_PIN=2;
 
 int debug = 0;
 int irrigationAction = 0;

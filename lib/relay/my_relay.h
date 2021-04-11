@@ -93,6 +93,7 @@ class Relay {
       offTime = time(nullptr);
     }
 
+
     void switchOn() {
       if (!on) {
         i2cRelay ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
@@ -107,6 +108,13 @@ class Relay {
         on = false;
 	offTime = time(nullptr);
       }
+    }
+
+    void operate() {
+	onTime = time(nullptr);
+        switchOn();
+	delay(100);
+        switchOff();
     }
 
     const char* state() {
