@@ -20,8 +20,6 @@
 #define JSON_SIZE 200
 
 ESP8266WebServer server(80);
-//typedef Array<int,7> Elements;
-//const int irrigationDays[7] = {0,2,4,6};
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -36,8 +34,6 @@ const int TX_PIN=1;
 const int RX_PIN=3;
 const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
-
-StaticJsonDocument<200> doc;
 
 Relay * lightSwitch = new ScheduleRelay(TX_PIN);
 
@@ -153,5 +149,4 @@ void loop() {
   prevTime = now;
 
   server.handleClient();
-
 }

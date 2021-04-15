@@ -38,6 +38,8 @@ const int RX_PIN=3;
 const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
 
+const int REED_PIN = 15;
+
 int debug = 0;
 int irrigationAction = 0;
 
@@ -51,7 +53,10 @@ IrrigationRelay * storage_array[8];
 ScheduleRelay * schedTest1 = new ScheduleRelay(TX_PIN);
 DuskToDawnScheduleRelay * d2dSchedTest1 = new DuskToDawnScheduleRelay(TX_PIN);
 
-//Veml yveml;
+int doorStatus;
+int previousDoorStatus;
+const int DOOR_OPEN = 1;
+const int DOOR_CLOSED = 0;
 
 void setup() {
   Serial.begin(115200);
@@ -81,10 +86,10 @@ void setup() {
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
   mcp.begin();      // use default address 0
 
-  // setup the light sensor
-//  if (!myveml.setup()) {
-//    syslog.log(LOG_INFO, "VEML setup failed");
-//  }
+  // Since the other end of the reed switch is connected to ground, we need
+  // to pull-up the reed switch pin internally.
+  mcp.pinMode(REED_PIN, INPUT);
+  mcp.pullUp(REED_PIN, HIGH);
 
   schedTest1->setup("schedule_test");
   schedTest1->setOnOffTimes(10, 42, 10, 43);
@@ -165,6 +170,7 @@ void handleStatus() {
   } 
 
   sensors["luxLevel"] = d2dSchedTest1->lightLevel;
+  sensors["doorStatus"] = doorStatus;
   doc["irrigationReturnCode"] = irrigationAction;
   doc["debug"] = debug;
 
@@ -227,10 +233,31 @@ void handleIrrigation() {
   server.send(404, "text/plain", "ERROR: Unknown irrigation command");
 }
 
+void checkDoorStatus() {
+  doorStatus = mcp.digitalRead(REED_PIN); // Check the door
+  if (debug == 2) {
+    syslog.logf(LOG_INFO, "Status: door is %s", doorStatus == DOOR_OPEN ? "open" : "closed");
+  }
+  if (doorStatus == DOOR_OPEN) // Door is open
+  {
+    if (previousDoorStatus != DOOR_OPEN) {
+      syslog.log(LOG_INFO, "Cottage door opened");
+    }
+  } else { // Door is closed
+    if (previousDoorStatus != DOOR_CLOSED) {
+      syslog.log(LOG_INFO, "Cottage door closed");
+    }
+  }
+  previousDoorStatus = doorStatus;
+
+}
+
 time_t prevTime = 0;;
 int prevIrrigationAction = 0;
 void loop() {
   ArduinoOTA.handle();
+
+  checkDoorStatus();
 
   time_t now = time(nullptr);
   if ( now != prevTime ) {
