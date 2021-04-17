@@ -78,6 +78,14 @@ class Relay {
       return scheduleOverride;
     }
 
+    int status() {
+      if (on) {
+	return 1;
+      } else {
+	return 0;
+      }
+    }
+
     void setup(const char* a) {
       name = new char[strlen(a)+1];
       strcpy(name,a);
@@ -92,7 +100,6 @@ class Relay {
       configTime(MYTZ, "pool.ntp.org");
       offTime = time(nullptr);
     }
-
 
     void switchOn() {
       if (!on) {
@@ -112,9 +119,9 @@ class Relay {
 
     const char* state() {
       if (on) {
-        return "on";
-      } else {
-        return "off";
+	return "on";
+      } else { 
+	return "off";
       }
     }
 };
@@ -126,10 +133,12 @@ class GarageDoorRelay: public Relay {
   int LED_CLOSED_PIN = -1;
   const int DOOR_OPEN = 0;
   const int DOOR_OPENING = 1;
-  const int DOOR_CLOSED = 2;
-  const int DOOR_CLOSING = 3;
+  const int DOOR_CLOSED = 2; const int DOOR_CLOSING = 3;
 
   public:
+    //variables
+    int doorState;
+
     //constructurs
     GarageDoorRelay(int a, int b, int c ): Relay(a) {
       REED_OPEN_PIN = b;
@@ -158,7 +167,9 @@ class GarageDoorRelay: public Relay {
       digitalWrite(LED_BUILTIN, LOW);
     }
 
-    int status;
+    int status() {
+      return doorState;
+    }
 
     void operate() {
 	onTime = time(nullptr);
@@ -167,8 +178,8 @@ class GarageDoorRelay: public Relay {
         switchOff();
     }
 
-    const char* statusWord() {
-      switch (status) {
+    const char* state() {
+      switch (doorState) {
 	case 0:
 	  return "OPEN";
 	  break;
@@ -188,15 +199,15 @@ class GarageDoorRelay: public Relay {
    int handle() {
      int doorOpen = digitalRead(REED_OPEN_PIN); // Check to see of the door is open
      if (doorOpen == LOW) { // Door detected is in the open position
-       if (status != DOOR_OPEN) {
+       if (doorState != DOOR_OPEN) {
 	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
-	 status = DOOR_OPEN;
+	 doorState = DOOR_OPEN;
 	 return 1;
        }
      } else { // Door is not in the open position
-       if (status == DOOR_OPEN ) {
+       if (doorState == DOOR_OPEN ) {
 	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
-	 status = DOOR_CLOSING;
+	 doorState = DOOR_CLOSING;
 	 return 1;
        }
      }
@@ -204,15 +215,15 @@ class GarageDoorRelay: public Relay {
      int doorClosed = digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
      if (doorClosed == LOW) // Door detected in the closed position
      {
-       if (status != DOOR_CLOSED) {
+       if (doorState != DOOR_CLOSED) {
 	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
-	 status = DOOR_CLOSED;
+	 doorState = DOOR_CLOSED;
 	 return 1;
        }
      } else { // Door is not in the closed position
-       if (status == DOOR_CLOSED) {
+       if (doorState == DOOR_CLOSED) {
 	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
-	 status = DOOR_OPENING;
+	 doorState = DOOR_OPENING;
 	 return 1;
        }
      }

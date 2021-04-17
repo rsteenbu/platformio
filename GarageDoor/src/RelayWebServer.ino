@@ -97,7 +97,7 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
 
   JsonObject switches = doc.createNestedObject("switches");
-  switches[garageDoor->name]["state"] = garageDoor->statusWord();
+  switches[garageDoor->name]["state"] = garageDoor->state();
 
   doc["debug"] = debug;
 
@@ -120,7 +120,7 @@ void handleStatus() {
 
 void handleDoor() {
   if (server.arg("command") == "status") {
-    server.send(200, "text/plain", garageDoor->statusWord());
+    server.send(200, "text/plain", garageDoor->state());
   } else if (server.arg("command") == "operate") {
     syslog.log(LOG_INFO, "Operating Garage Door");
     garageDoor->operate();
@@ -134,7 +134,7 @@ void loop() {
   ArduinoOTA.handle();
 
   if (garageDoor->handle()) {
-    syslog.logf(LOG_INFO, "Garage door %s", garageDoor->statusWord());
+    syslog.logf(LOG_INFO, "Garage door %s", garageDoor->state());
   }
 
   server.handleClient();

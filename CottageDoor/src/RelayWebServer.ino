@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 
 #include <my_relay.h>
+#include <my_reed.h>
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -33,14 +34,13 @@ const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
 
 const int BUILTIN_LED2 = 2;
-const int REED_PIN = GPIO0_PIN;
 const int DOOR_OPEN = 1;
 const int DOOR_CLOSED = 0;
 
 int debug = 0;
 Relay * lightSwitch = new ScheduleRelay(TX_PIN);
-int doorStatus;
-int previousDoorStatus;
+
+ReedSwitch * cottageDoor = new ReedSwitch("Cottage Door");
 
 void setup() {
   Serial.begin(115200);
@@ -53,9 +53,8 @@ void setup() {
   pinMode(BUILTIN_LED2, OUTPUT);
   digitalWrite(BUILTIN_LED2, LOW);
 
-  // Since the other end of the reed switch is connected to ground, we need
-  // to pull-up the reed switch pin internally.
-  pinMode(REED_PIN, INPUT_PULLUP);
+  // setup the reed switch
+  cottageDoor->setup(GPIO0_PIN);
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -112,11 +111,12 @@ void handleStatus() {
   now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
+  JsonObject sensors = doc.createNestedObject("sensors");
 
   switches["light"]["state"] = lightSwitch->state();
+  sensors["door"]["state"] = cottageDoor->state();
   doc["debug"] = debug;
 
-  doc["doorStatus"] = doorStatus == DOOR_OPEN ? "open" : "closed";
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
   strftime (timeString,20,"%D %T",timeinfo);
@@ -152,7 +152,7 @@ void handleRelay() {
 
 void handleDoor() {
   if (server.arg("state") == "status") {
-    server.send(200, "text/plain", doorStatus ? "1" : "0");
+    server.send(200, "text/plain", cottageDoor->state());
     return;
   } 
   server.send(404, "text/plain", "ERROR: uknonwn state command");
@@ -161,23 +161,15 @@ void handleDoor() {
 void loop() {
   ArduinoOTA.handle();
 
-  doorStatus = digitalRead(REED_PIN); // Check the door
-  if (debug == 2) {
-    syslog.logf(LOG_INFO, "Status: door is %s", doorStatus == DOOR_OPEN ? "open" : "closed");
+  int doorAction = cottageDoor->handle();
+  if (doorAction == 1) {
+    syslog.log(LOG_INFO, "Cottage door opened");
+    digitalWrite(BUILTIN_LED2, doorAction);
   }
-  if (doorStatus == DOOR_OPEN) // Door is open
-  {
-    if (previousDoorStatus != DOOR_OPEN) {
-      syslog.log(LOG_INFO, "Cottage door opened");
-      digitalWrite(BUILTIN_LED2, doorStatus);
-    }
-  } else { // Door is closed
-    if (previousDoorStatus != DOOR_CLOSED) {
-      syslog.log(LOG_INFO, "Cottage door closed");
-      digitalWrite(BUILTIN_LED2, doorStatus);
-    }
+  if (doorAction == 2) {
+    syslog.log(LOG_INFO, "Cottage door closed");
+    digitalWrite(BUILTIN_LED2, doorAction);
   }
-  previousDoorStatus = doorStatus;
 
   server.handleClient();
 }
