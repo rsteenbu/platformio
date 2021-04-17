@@ -12,7 +12,7 @@
 #include "Adafruit_MCP23017.h"
 
 #include <my_relay.h>
-//#include <my_veml.h>
+#include <my_reed.h>
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -23,6 +23,10 @@
 #define APP_NAME "switch"
 #define JSON_SIZE 500
 #define MYTZ TZ_America_Los_Angeles
+
+//TODO
+// add status state functions to my_relay like my_reed
+// move name to constructor and move pin assignment to setup
 
 ESP8266WebServer server(80);
 
@@ -53,10 +57,7 @@ IrrigationRelay * storage_array[8];
 ScheduleRelay * schedTest1 = new ScheduleRelay(TX_PIN);
 DuskToDawnScheduleRelay * d2dSchedTest1 = new DuskToDawnScheduleRelay(TX_PIN);
 
-int doorStatus;
-int previousDoorStatus;
-const int DOOR_OPEN = 1;
-const int DOOR_CLOSED = 0;
+ReedSwitch * shedDoor = new ReedSwitch();
 
 void setup() {
   Serial.begin(115200);
@@ -86,10 +87,8 @@ void setup() {
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
   mcp.begin();      // use default address 0
 
-  // Since the other end of the reed switch is connected to ground, we need
-  // to pull-up the reed switch pin internally.
-  mcp.pinMode(REED_PIN, INPUT);
-  mcp.pullUp(REED_PIN, HIGH);
+  // setup the reed switch on the shed door
+  shedDoor->setup(REED_PIN, &mcp);
 
   schedTest1->setup("schedule_test");
   schedTest1->setOnOffTimes(10, 42, 10, 43);
@@ -164,13 +163,13 @@ void handleStatus() {
   JsonObject switches = doc.createNestedObject("switches");
   JsonObject sensors = doc.createNestedObject("sensors");
   for (IrrigationRelay * relay : IrrigationZones) {
-   switches[relay->name]["state"] = relay->on ? "on" : "off";
+   switches[relay->name]["state"] = relay->state();
    switches[relay->name]["soilMoistureLevel"] = relay->soilMoistureLevel;
    switches[relay->name]["soilMoisturePercentage"] = relay->soilMoisturePercentage;
   } 
 
   sensors["luxLevel"] = d2dSchedTest1->lightLevel;
-  sensors["doorStatus"] = doorStatus;
+  sensors["doorStatus"] = shedDoor->status();
   doc["irrigationReturnCode"] = irrigationAction;
   doc["debug"] = debug;
 
@@ -204,7 +203,7 @@ void handleIrrigation() {
     if (server.arg("zone") == relay->name) {
       matchFound = true;
       if (server.arg("state") == "status") {
-	server.send(200, "text/plain", relay->on ? "1" : "0");
+	server.send(200, "text/plain", relay->status() ? "1" : "0");
 	return;
       } else if (server.arg("state") == "on") {
 	syslog.logf(LOG_INFO, "Turning irrigation zone %s on by API request at %ld", relay->name, relay->onTime);
@@ -233,31 +232,18 @@ void handleIrrigation() {
   server.send(404, "text/plain", "ERROR: Unknown irrigation command");
 }
 
-void checkDoorStatus() {
-  doorStatus = mcp.digitalRead(REED_PIN); // Check the door
-  if (debug == 2) {
-    syslog.logf(LOG_INFO, "Status: door is %s", doorStatus == DOOR_OPEN ? "open" : "closed");
-  }
-  if (doorStatus == DOOR_OPEN) // Door is open
-  {
-    if (previousDoorStatus != DOOR_OPEN) {
-      syslog.log(LOG_INFO, "Cottage door opened");
-    }
-  } else { // Door is closed
-    if (previousDoorStatus != DOOR_CLOSED) {
-      syslog.log(LOG_INFO, "Cottage door closed");
-    }
-  }
-  previousDoorStatus = doorStatus;
-
-}
-
 time_t prevTime = 0;;
 int prevIrrigationAction = 0;
 void loop() {
   ArduinoOTA.handle();
 
-  checkDoorStatus();
+  int reedAction = shedDoor->handle();
+  if (reedAction == 1) {
+    syslog.log(LOG_INFO, "Shed door opened");
+  }
+  if (reedAction == 2) {
+    syslog.log(LOG_INFO, "Shed door closed");
+  }
 
   time_t now = time(nullptr);
   if ( now != prevTime ) {
