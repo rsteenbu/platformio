@@ -47,7 +47,7 @@ const int GPIO2_PIN=2;
 
 char msg[40];
 StaticJsonDocument<200> doc;
-Relay lvLights(TX_PIN, true);
+Relay lvLights(TX_PIN);
 
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
@@ -61,7 +61,8 @@ void setup() {
   Serial.println("Booting up");
 
   // Setup the Relay
-  lvLights.setup();
+  lvLights.setup("backyard_lights");
+  lvLights.setBackwards();
 
   // set I2C pins (SDA, SDL)
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
@@ -171,11 +172,11 @@ void handleDebug() {
 
 void handleLight() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %ld", lvLights.onTime);
+    syslog.logf(LOG_INFO, "Turning %s on at %ld", lvLights.name, lvLights.onTime);
     lvLights.switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %ld", lvLights.offTime);
+    syslog.logf(LOG_INFO, "Turning %s off at %ld", lvLights.name, lvLights.offTime);
     lvLights.switchOff();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {

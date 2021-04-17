@@ -6,7 +6,7 @@
 class ReedSwitch {
   int pin;
   Adafruit_MCP23017* mcp;
-  bool i2cSwitch = false;
+  bool i2cPins = false;
 
   public:
     //variables
@@ -15,23 +15,25 @@ class ReedSwitch {
 
     //constructors
     ReedSwitch () { }
-    ReedSwitch (const char* a) { 
-      name = new char[strlen(a)+1];
-      strcpy(name,a);
+    ReedSwitch(int a) {
+      pin = a;
     }
-
-    void setup(int a, Adafruit_MCP23017* b) {
+    ReedSwitch(int a, Adafruit_MCP23017* b) {
       pin = a;
       mcp = b;
-      i2cSwitch = true;
-
-      (*mcp).pinMode(pin, INPUT);
-      (*mcp).pullUp(pin, HIGH);
+      i2cPins = true;
     }
 
-    void setup(int a) {
-      pin = a;
-      pinMode(pin, INPUT_PULLUP);
+    void setup(const char* a) {
+      name = new char[strlen(a)+1];
+      strcpy(name,a);
+
+      if (i2cPins) {
+	(*mcp).pinMode(pin, INPUT);
+	(*mcp).pullUp(pin, HIGH);
+      } else {
+	pinMode(pin, INPUT_PULLUP);
+      }
     }
 
     const char* state() {
@@ -53,7 +55,7 @@ class ReedSwitch {
     int handle() {
       bool previousDoorOpen = doorOpen;
       
-      if (i2cSwitch) {
+      if (i2cPins) {
 	doorOpen = (*mcp).digitalRead(pin) ? true : false; // Check the door
       } else {
 	doorOpen = digitalRead(pin) ? true : false; // Check the door
