@@ -25,7 +25,6 @@
 #define MYTZ TZ_America_Los_Angeles
 
 //TODO
-// add status state functions to my_relay like my_reed
 // move name to constructor and move pin assignment to setup
 
 ESP8266WebServer server(80);
@@ -57,7 +56,7 @@ IrrigationRelay * storage_array[8];
 ScheduleRelay * schedTest1 = new ScheduleRelay(TX_PIN);
 DuskToDawnScheduleRelay * d2dSchedTest1 = new DuskToDawnScheduleRelay(TX_PIN);
 
-ReedSwitch * shedDoor = new ReedSwitch();
+ReedSwitch * shedDoor = new ReedSwitch(REED_PIN, &mcp);
 
 void setup() {
   Serial.begin(115200);
@@ -88,11 +87,11 @@ void setup() {
   mcp.begin();      // use default address 0
 
   // setup the reed switch on the shed door
-  shedDoor->setup(REED_PIN, &mcp);
+  shedDoor->setup("shed_door");
 
-  schedTest1->setup("schedule_test");
+  schedTest1->setup("schedule test");
   schedTest1->setOnOffTimes(10, 42, 10, 43);
-  d2dSchedTest1->setup("dusk_to_dawn_test");
+  d2dSchedTest1->setup("dusk to dawn test");
   if (!d2dSchedTest1->setVemlLightSensor()) {
     syslog.log(LOG_INFO, "ERROR: setVemlLightSensor() failed");
   }
@@ -100,8 +99,9 @@ void setup() {
   IrrigationZones.setStorage(storage_array);
 
   // Garden Irrigation
-  IrrigationRelay * irz1 = new IrrigationRelay(0, &mcp, true);
+  IrrigationRelay * irz1 = new IrrigationRelay(0, &mcp);
   irz1->setup("garden");
+  irz1->setBackwards();
   irz1->setRuntime(1);
   irz1->setStartTime(17,1); // hour, minute
   irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
@@ -110,8 +110,9 @@ void setup() {
   IrrigationZones.push_back(irz1);
 
   // Pots and Plants Irrigation
-  IrrigationRelay * irz2 = new IrrigationRelay(1, &mcp, true);
+  IrrigationRelay * irz2 = new IrrigationRelay(1, &mcp);
   irz2->setup("patio_pots");
+  irz2->setBackwards();
   irz2->setRuntime(1);
   irz2->setStartTime(17,2); // hour, minute
   irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run

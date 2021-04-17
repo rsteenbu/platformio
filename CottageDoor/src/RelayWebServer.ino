@@ -40,7 +40,7 @@ const int DOOR_CLOSED = 0;
 int debug = 0;
 Relay * lightSwitch = new ScheduleRelay(TX_PIN);
 
-ReedSwitch * cottageDoor = new ReedSwitch("Cottage Door");
+ReedSwitch * cottageDoor = new ReedSwitch(GPIO0_PIN);
 
 void setup() {
   Serial.begin(115200);
@@ -54,7 +54,7 @@ void setup() {
   digitalWrite(BUILTIN_LED2, LOW);
 
   // setup the reed switch
-  cottageDoor->setup(GPIO0_PIN);
+  cottageDoor->setup("Cottage_Door");
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);

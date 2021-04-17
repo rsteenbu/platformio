@@ -18,10 +18,10 @@ class IrrigationZones {
 
 class Relay {
   int pin;
-  bool backwards;
-  int onVal, offVal;
+  int onVal = HIGH;
+  int offVal = LOW;
   Adafruit_MCP23017* mcp;
-  bool i2cRelay = false;
+  bool i2cPins = false;
 
   public:
     //variables
@@ -32,42 +32,16 @@ class Relay {
     char* name;
 
     //constructors
-    Relay (int a): pin(a) {
-        onVal = HIGH;
-        offVal = LOW;
-    }
+    Relay (int a): pin(a) {}
     Relay (int a, Adafruit_MCP23017* b) {
       pin = a;
       mcp = b;
-      i2cRelay = true;
-      onVal = HIGH;
-      offVal = LOW;
-    }
-    Relay (int a, Adafruit_MCP23017* b, bool c) {
-      pin = a;
-      mcp = b;
-      backwards = c;
-      i2cRelay = true;
-      if (backwards) {
-        onVal = LOW;
-        offVal = HIGH;
-      } else {
-        onVal = HIGH;
-        offVal = LOW;
-      }
-    }
-    Relay (int a, bool b): pin(a), backwards(b) {
-      if (backwards) {
-        onVal = LOW;
-        offVal = HIGH;
-      } else {
-        onVal = HIGH;
-        offVal = LOW;
-      }
+      i2cPins = true;
     }
 
-    void setBackwards(bool a) {
-      backwards = a;
+    void setBackwards() {
+      onVal = LOW;
+      offVal = HIGH;
     }
 
     void setScheduleOverride(bool a) {
@@ -90,7 +64,7 @@ class Relay {
       name = new char[strlen(a)+1];
       strcpy(name,a);
 
-      if (i2cRelay) {
+      if (i2cPins) {
 	(*mcp).pinMode(pin, OUTPUT);
 	(*mcp).digitalWrite(pin,offVal);
       } else {
@@ -103,7 +77,7 @@ class Relay {
 
     void switchOn() {
       if (!on) {
-        i2cRelay ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
+        i2cPins ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
         on = true;
 	onTime = time(nullptr);
       }
@@ -111,7 +85,7 @@ class Relay {
 
     void switchOff() {
       if (on) {
-        i2cRelay ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
+        i2cPins ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
         on = false;
 	offTime = time(nullptr);
       }
@@ -246,10 +220,6 @@ class TimerRelay: public Relay {
       setEveryDayOn();
     }
 
-    TimerRelay (int a, Adafruit_MCP23017* b, bool c): Relay(a, b, c) {
-      setEveryDayOn();
-    }
-
     void setRuntime(int a) {
       runTime = a;
     }
@@ -355,7 +325,6 @@ class IrrigationRelay: public TimerRelay {
     //constructors
     IrrigationRelay (int a): TimerRelay(a) { }
     IrrigationRelay (int a, Adafruit_MCP23017* b): TimerRelay(a, b) { }
-    IrrigationRelay (int a, Adafruit_MCP23017* b, bool c): TimerRelay(a, b, c) { }
 
     // turn on the soilMoisture check at soilMoisturePercentageToRun
     void setSoilMoistureSensor(int a, int b) {
