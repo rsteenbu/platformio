@@ -107,7 +107,8 @@ class GarageDoorRelay: public Relay {
   int LED_CLOSED_PIN = -1;
   const int DOOR_OPEN = 0;
   const int DOOR_OPENING = 1;
-  const int DOOR_CLOSED = 2; const int DOOR_CLOSING = 3;
+  const int DOOR_CLOSED = 2;
+  const int DOOR_CLOSING = 3;
 
   public:
     //variables
@@ -321,6 +322,7 @@ class IrrigationRelay: public TimerRelay {
   public:
     double soilMoisturePercentage;
     double soilMoistureLevel = -1;
+    bool soilDry = false;
 
     //constructors
     IrrigationRelay (int a): TimerRelay(a) { }
@@ -365,32 +367,34 @@ class IrrigationRelay: public TimerRelay {
       return soilMoisturePercentage < soilMoisturePercentageToRun;
     }
 
-   int handle() {
+   bool handle() {
      // set the soilMoisture level on every loop
-     bool soilDry = checkSoilMoisture();
+     soilDry = checkSoilMoisture();
 
      // if we don't have runtime set, then just return
-     if ( runTime == 0 ) return 0;
-     if ( scheduleOverride ) return 5;
+     if ( runTime == 0 ) return false;
+     if ( scheduleOverride ) return false;
 
      // if we're not on, turn it on if it's the right day and time
      if ( !on && isTimeToStart() ) {
-       if ( !soilDry ) return 3;
+       if ( !soilDry ) return false;
        switchOn();
-       return 1;
+       return true;
      } 
 
      // if we're on, turn it off if it's been more than than the time to run or if it's started raining
      if ( on && isTimeToStop() ) {
 	 switchOff();
-	 return 2;
+	 return true;
        }
-     if ( on && soilMoisturePercentage > soilMoisturePercentageToRun ) {
+
+     // if we're on it started raining, turn it off
+     if ( on && !soilDry ) {
 	 switchOff();
-	 return 4;
+	 return true;
      }
 
-     return -1;
+     return false;
    }
 };
 
@@ -465,41 +469,40 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
   bool vemlSensor = false;
 
   public:
-    int lightLevel;
+    int lightLevel = -1;
 
     DuskToDawnScheduleRelay (int a): ScheduleRelay(a) {}
 
     bool setVemlLightSensor() {
-      vemlSensor = true;
 
       if (veml.setup()) {
-	return true;
+        vemlSensor = true;
       } else { 
-	return false;
+        vemlSensor = false;
       }
+      return vemlSensor;
     }
 
-    void setMorningOnHour(int a) {
-      morningOnHour = a;
-    }
-
-    void setNightOffHour(int a) {
+    void setNightOffOnHours(int a, int b) {
       nightOffHour = a;
+      morningOnHour = b;
     }
 
     void setDusk(int a) {
       dusk = a;
     }
 
-   int handle() {
+   bool handle() {
      time_t now = time(nullptr);
      struct tm *timeinfo = localtime(&now);
      int currHour = timeinfo->tm_hour;
 
-     lightLevel = veml.readLux();
+     if (vemlSensor) {
+       lightLevel = veml.readLux();
+     }
 
      if ( scheduleOverride ) {
-       return 5; 
+       return false; 
      }
 
      // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
@@ -509,7 +512,7 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
 
        if (timesDark > timesToSample) {
 	 switchOn();
-	 return 1;
+	 return true;
        }
      }
 
@@ -520,11 +523,11 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
 
        if (timesLight > timesToSample) {
 	 switchOff();
-	 return 2;
+	 return true;
        }
      }
 
-     return 0;
+     return false;
    }
 };
 

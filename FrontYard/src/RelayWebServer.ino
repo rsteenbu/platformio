@@ -15,7 +15,6 @@
 #include <Adafruit_I2CDevice.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <Adafruit_VEML7700.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -41,7 +40,6 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSTEM_APP
 // instantiate the display
 Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire, -1);
 // Adafruit i2c LUX sensor
-Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
 int debug = 0;
 char msg[40];
@@ -49,10 +47,6 @@ char msg[40];
 int const SOIL_PIN = A0;
 int const PIR_PIN = D6;
 int const ONEWIRE_PIN = D7;
-// Create the relays
-Relay xmasLights(D3);
-Relay lvLights(D4);
-IrrigationRelay irrigation(D5);
 
 // MotionSensor setup
 int pirState = LOW;  //start with no motion detected
@@ -61,6 +55,9 @@ int pirState = LOW;  //start with no motion detected
 OneWire ds(ONEWIRE_PIN);  // on pin D7 (a 4.7K resistor is necessary)
 DallasTemperature sensors(&ds);
 DeviceAddress frontyardThermometer;
+
+DuskToDawnScheduleRelay * lvLights = new DuskToDawnScheduleRelay(D4);
+IrrigationRelay * irrigation = new IrrigationRelay(D5);
 
 int16_t lightLevel = 0;
 float temperature = 0;
@@ -73,15 +70,6 @@ void setup() {
   // prepare the motion sensor
   pinMode(PIR_PIN, INPUT);
 
-  // Setup the Relays
-  xmasLights.setup("xmaslights");
-  lvLights.setup("lvlights");
-  irrigation.setup("irrigation");
-  irrigation.setEveryDayOn();
-  irrigation.setRuntime(10);
-  irrigation.setStartTime(8, 15);
-  irrigation.setSoilMoistureSensor(SOIL_PIN,86); // pin for analog read, percentage to run at
-  irrigation.setSoilMoistureLimits(660, 330); //dry level, wet level
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
   WiFi.hostname(DEVICE_HOSTNAME);
@@ -102,11 +90,25 @@ void setup() {
   // set the time
   configTime(MYTZ, "pool.ntp.org");
 
+  // Dusk To Dawn LV Lights
+  lvLights->setup("lvlights");
+  lvLights->setNightOffOnHours(0,5);
+  if (! lvLights->setVemlLightSensor()) {
+    syslog.log(LOG_INFO, "ERROR: Setup of Veml Sensor failed");
+  }
+
+  // Frontyard Irrigation
+  irrigation->setup("frontyard");
+  irrigation->setRuntime(10);
+  irrigation->setStartTime(8, 15);
+  irrigation->setStartTime(15, 47);
+  irrigation->setSoilMoistureSensor(SOIL_PIN, 86); // pin for analog read, percentage to run at
+  irrigation->setSoilMoistureLimits(660, 330); //dry level, wet level
+
   // Start the HTTP server
   server.on("/debug", handleDebug);
   server.on("/light", handleLight);
   server.on("/irrigation", handleIrrigation);
-  server.on("/xmasLights", handleXmasLights);
   server.on("/status", handleStatus);
   server.on("/sensors", handleSensors);
   server.begin();
@@ -127,32 +129,6 @@ void setup() {
   display.clearDisplay();
 
   syslog.appName(LIGHT_APPNAME);
-  if (!veml.begin()) {
-    syslog.log(LOG_INFO, "VEML Sensor not found");
-  } else {
-    veml.setGain(VEML7700_GAIN_1);
-    veml.setIntegrationTime(VEML7700_IT_800MS);
-
-    switch (veml.getGain()) {
-      case VEML7700_GAIN_1: syslog.logf(LOG_INFO, "Gain: %s", "1"); break;
-      case VEML7700_GAIN_2: syslog.logf(LOG_INFO, "Gain: %s", "2"); break;
-      case VEML7700_GAIN_1_4: syslog.logf(LOG_INFO, "Gain: %s", "1/4"); break;
-      case VEML7700_GAIN_1_8: syslog.logf(LOG_INFO, "Gain: %s", "1/8"); break;
-    }
-
-    Serial.print(F("Integration Time (ms): "));
-    switch (veml.getIntegrationTime()) {
-      case VEML7700_IT_25MS: syslog.logf(LOG_INFO, "Integration Time (ms): %d", 25); break;
-      case VEML7700_IT_50MS: syslog.logf(LOG_INFO, "Integration Time (ms): %d", 50); break;
-      case VEML7700_IT_100MS: syslog.logf(LOG_INFO, "Integration Time (ms): %d", 100); break;
-      case VEML7700_IT_200MS: syslog.logf(LOG_INFO, "Integration Time (ms): %d", 200); break;
-      case VEML7700_IT_400MS: syslog.logf(LOG_INFO, "Integration Time (ms): %d", 400); break;
-      case VEML7700_IT_800MS: syslog.logf(LOG_INFO, "Integration Time (ms): %d", 800); break;
-    }
-    veml.setLowThreshold(10000);
-    veml.setHighThreshold(20000);
-    veml.interruptEnable(false);
-  }
 
   // Start up the DallasTemperature library
   syslog.appName(THERMO_APPNAME);
@@ -189,25 +165,25 @@ void handleDebug() {
 
 void handleLight() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %ld", lvLights.onTime);
-    lvLights.switchOn();
+    syslog.logf(LOG_INFO, "Turning light on at %ld", lvLights->onTime);
+    lvLights->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %ld", lvLights.offTime);
-    lvLights.switchOff();
+    syslog.logf(LOG_INFO, "Turning light off at %ld", lvLights->offTime);
+    lvLights->switchOff();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
-    server.send(200, "text/plain", lvLights.on ? "1" : "0");
+    server.send(200, "text/plain", lvLights->on ? "1" : "0");
   } else if (server.arg("override") == "on") {
     syslog.log(LOG_INFO, "Disabling light schedule");
-    lvLights.setScheduleOverride(true);
+    lvLights->setScheduleOverride(true);
     server.send(200, "text/plain");
   } else if (server.arg("override") == "off") {
     syslog.log(LOG_INFO, "Enabling light schedule");
-    lvLights.setScheduleOverride(false);
+    lvLights->setScheduleOverride(false);
     server.send(200, "text/plain");
   } else if (server.arg("override") == "status") {
-    server.send(200, "text/plain", lvLights.scheduleOverride ? "1" : "0");
+    server.send(200, "text/plain", lvLights->scheduleOverride ? "1" : "0");
   } else {
     server.send(404, "text/plain", "ERROR: unknown light command");
   }
@@ -215,64 +191,38 @@ void handleLight() {
 
 void handleIrrigation() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning irrigation on at %ld", irrigation.onTime);
-    irrigation.switchOn();
+    syslog.logf(LOG_INFO, "Turning irrigation on at %ld", irrigation->onTime);
+    irrigation->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning irrigation off at %ld", irrigation.offTime);
-    irrigation.switchOff();
+    syslog.logf(LOG_INFO, "Turning irrigation off at %ld", irrigation->offTime);
+    irrigation->switchOff();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
-    server.send(200, "text/plain", irrigation.on ? "1" : "0");
+    server.send(200, "text/plain", irrigation->status() ? "1" : "0");
   } else if (server.arg("override") == "on") {
     syslog.log(LOG_INFO, "Disabling irrigation schedule");
-    irrigation.setScheduleOverride(true);
+    irrigation->setScheduleOverride(true);
     server.send(200, "text/plain");
   } else if (server.arg("override") == "off") {
     syslog.log(LOG_INFO, "Enabling irrigation schedule");
-    irrigation.setScheduleOverride(false);
+    irrigation->setScheduleOverride(false);
     server.send(200, "text/plain");
   } else if (server.arg("override") == "status") {
-    server.send(200, "text/plain", irrigation.scheduleOverride ? "1" : "0");
+    server.send(200, "text/plain", irrigation->scheduleOverride ? "1" : "0");
   } else {
     server.send(404, "text/plain", "ERROR: unknown irrigation command");
-  }
-}
-
-void handleXmasLights() {
-  if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning xmasLights on at %ld", xmasLights.onTime);
-    xmasLights.switchOn();
-    server.send(200, "text/plain");
-  } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning xmasLights off at %ld", xmasLights.offTime);
-    xmasLights.switchOff();
-    server.send(200, "text/plain");
-  } else if (server.arg("state") == "status") {
-    server.send(200, "text/plain", xmasLights.on ? "1" : "0");
-  } else if (server.arg("override") == "on") {
-    syslog.log(LOG_INFO, "Disabling xmasLights schedule");
-    xmasLights.setScheduleOverride(true);
-    server.send(200, "text/plain");
-  } else if (server.arg("override") == "off") {
-    syslog.log(LOG_INFO, "Enabling xmasLights schedule");
-    xmasLights.setScheduleOverride(false);
-    server.send(200, "text/plain");
-  } else if (server.arg("override") == "status") {
-    server.send(200, "text/plain", xmasLights.scheduleOverride ? "1" : "0");
-  } else {
-    server.send(404, "text/plain", "ERROR: unknown xmasLights command");
   }
 }
 
 void handleSensors() {
   if (server.arg("sensor") == "soilmoisture") {
     char msg[10];
-    sprintf(msg, "%0.2f", irrigation.soilMoisturePercentage);
+    sprintf(msg, "%0.2f", irrigation->soilMoisturePercentage);
     server.send(200, "text/plain", msg);
   } else if (server.arg("sensor") == "light") {
     char msg[10];
-    sprintf(msg, "%d", lightLevel);
+    sprintf(msg, "%d", lvLights->lightLevel);
     server.send(200, "text/plain", msg);
   } else if (server.arg("sensor") == "temperature") {
     char msg[10];
@@ -289,18 +239,16 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
 
   JsonObject switches = doc.createNestedObject("switches");
-  switches["irrigation"]["state"] = irrigation.state();
-  switches["irrigation"]["override"] = irrigation.scheduleOverride;
-  switches["lvLights"]["state"] = lvLights.state();
-  switches["lvLights"]["override"] = lvLights.scheduleOverride;
-  switches["xmasLights"]["state"] = xmasLights.state();
-  switches["xmasLights"]["override"] = xmasLights.scheduleOverride;
+  switches["irrigation"]["state"] = irrigation->state();
+  switches["irrigation"]["override"] = irrigation->scheduleOverride;
+  switches["lvLights"]["state"] = lvLights->state();
+  switches["lvLights"]["override"] = lvLights->scheduleOverride;
 
   JsonObject sensors = doc.createNestedObject("sensors");
   sensors["temperature"] = temperature;
-  sensors["lightLevel"] = lightLevel;
-  sensors["soilMoistureLevel"] = irrigation.soilMoistureLevel;
-  sensors["soilMoisturePercentage"] = irrigation.soilMoisturePercentage;
+  sensors["lightLevel"] = lvLights->lightLevel;
+  sensors["soilMoistureLevel"] = irrigation->soilMoistureLevel;
+  sensors["soilMoisturePercentage"] = irrigation->soilMoisturePercentage;
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
   strftime (timeString,20,"%D %T",timeinfo);
@@ -320,11 +268,9 @@ void handleStatus() {
   }
 }
 
-int timesDark = 0;
-int timesLight = 0;
 time_t prevTime = 0;;
-int prevIrrigationAction = 0;
 
+int prevIrrigationAction = 0;
 void loop() {
   ArduinoOTA.handle();
   server.handleClient();
@@ -333,36 +279,26 @@ void loop() {
   if ( now != prevTime ) {
     if ( now % 5 == 0 ) {
       syslog.appName(IRRIGATION_APPNAME);
-      int irrigationAction = irrigation.handle();
-      if ( irrigationAction == 1 ) {
-	syslog.log(LOG_INFO, "scheduled irrigation started");
-      } 
-      if ( irrigationAction == 2 ) {
-	syslog.log(LOG_INFO, "scheduled irrigation stopped");
-      }
-      if ( prevIrrigationAction != 3 && irrigationAction == 3 ) {
-	syslog.log(LOG_INFO, "scheduled irrigation not started because the soil's wet");
-      }
-      if ( prevIrrigationAction != 4 && irrigationAction == 4 ) {
-	syslog.log(LOG_INFO, "scheduled irrigation stopped because the soil's wet");
+      if ( irrigation->handle() ) {
+	syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", irrigation->name, irrigation->state(), irrigation->soilMoisturePercentage);
       }
 
-      prevIrrigationAction = irrigationAction;
+      syslog.appName(LIGHTSWITCH_APPNAME);
+      if (lvLights->handle()) {
+	syslog.logf(LOG_INFO, "%s turned %s", lvLights->name, lvLights->state());
+      }
 
       syslog.appName(SYSTEM_APPNAME);
 
       temperature = getTemperature();
 
-      lightLevel = veml.readLux();
-
-      updateDisplay(lightLevel, irrigation.soilMoisturePercentage, temperature);
-      controlLightSchedule(lvLights, lightLevel);
+      updateDisplay();
     }
     prevTime = now;
   }
 }
 
-void updateDisplay(int16_t lightLevel, float soilMoisturePercentage, float temperature) {
+void updateDisplay() {
     syslog.appName(MOTION_APPNAME);
     int pirVal = digitalRead(PIR_PIN);  // read input value from the motion sensor
     if (pirVal == HIGH) {            // check if the input is HIGH
@@ -393,9 +329,9 @@ void updateDisplay(int16_t lightLevel, float soilMoisturePercentage, float tempe
       display.setTextSize(0);
       display.setTextColor(WHITE);
       display.println(timeString);
-      display.printf("Light Level: %d", lightLevel);
+      display.printf("Light Level: %d", lvLights->lightLevel);
       display.println();
-      display.printf("Soil Moisture: %0.2f", soilMoisturePercentage);
+      display.printf("Soil Moisture: %0.2f", irrigation->soilMoisturePercentage);
       display.println();
       display.printf("Temperature: %2.2f", temperature);
       display.println();
@@ -410,42 +346,3 @@ float getTemperature() {
   return DallasTemperature::toFahrenheit(tempC); // Converts tempC to Fahrenheit
 }
 
-void controlLightSchedule(Relay &lightSwitch, int16_t lightLevel) {
-  int const dusk = 100;
-  time_t now = time(nullptr);
-  int const timesToSample = 10;
-  int hour = localtime(&now)->tm_hour;
-  int nightOffHour = 0;
-  int morningOnHour = 5;
-
-  syslog.appName(LIGHTSWITCH_APPNAME);
-  if (lightSwitch.scheduleOverride) {
-    return;
-  }
-
-  // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
-  if ( lightLevel < dusk && !lightSwitch.on && !( nightOffHour >= 0 && hour <= morningOnHour ) ) {
-    timesLight = 0;
-    timesDark++;
-    if (debug) {
-      syslog.logf(LOG_INFO, "DEBUG: light level below dusk %d for %d times", dusk, timesDark);
-    }
-    if (timesDark > timesToSample) {
-      syslog.log(LOG_INFO, "Turning lights on");
-      lightSwitch.switchOn();
-    }
-  }
-
-  // Switch off criteria: the lights are on and either it's light or it's in the middle of the night
-  if (lightSwitch.on && (lightLevel > dusk || ( hour >= 0 && hour < 6 ))) {
-    timesDark = 0;
-    timesLight++;
-    if (debug) {
-      syslog.logf(LOG_INFO, "DEBUG: light level above dusk %d for %d times", dusk, timesLight);
-    }
-    if (timesLight > timesToSample) {
-      syslog.log(LOG_INFO, "Turning lights off");
-      lightSwitch.switchOff();
-    }
-  }
-}
