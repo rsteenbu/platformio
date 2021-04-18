@@ -101,7 +101,6 @@ void setup() {
   irrigation->setup("frontyard");
   irrigation->setRuntime(10);
   irrigation->setStartTime(8, 15);
-  irrigation->setStartTime(15, 47);
   irrigation->setSoilMoistureSensor(SOIL_PIN, 86); // pin for analog read, percentage to run at
   irrigation->setSoilMoistureLimits(660, 330); //dry level, wet level
 
@@ -268,33 +267,28 @@ void handleStatus() {
   }
 }
 
-time_t prevTime = 0;;
-
-int prevIrrigationAction = 0;
+time_t prevTime = 0;
+time_t now = 0;
 void loop() {
   ArduinoOTA.handle();
   server.handleClient();
 
-  time_t now = time(nullptr);
-  if ( now != prevTime ) {
-    if ( now % 5 == 0 ) {
-      syslog.appName(IRRIGATION_APPNAME);
-      if ( irrigation->handle() ) {
-	syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", irrigation->name, irrigation->state(), irrigation->soilMoisturePercentage);
-      }
+  syslog.appName(IRRIGATION_APPNAME);
+  if ( irrigation->handle() ) {
+    syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", irrigation->name, irrigation->state(), irrigation->soilMoisturePercentage);
+  }
 
-      syslog.appName(LIGHTSWITCH_APPNAME);
-      if (lvLights->handle()) {
-	syslog.logf(LOG_INFO, "%s turned %s", lvLights->name, lvLights->state());
-      }
+  syslog.appName(LIGHTSWITCH_APPNAME);
+  if (lvLights->handle()) {
+    syslog.logf(LOG_INFO, "%s turned %s", lvLights->name, lvLights->state());
+  }
 
-      syslog.appName(SYSTEM_APPNAME);
-
-      temperature = getTemperature();
-
-      updateDisplay();
-    }
-    prevTime = now;
+  syslog.appName(SYSTEM_APPNAME);
+  prevTime = now;
+  now = time(nullptr);
+  if ( ( now != prevTime ) && ( now % 5 == 0 ) ) {
+     temperature = getTemperature();
+     updateDisplay();
   }
 }
 
