@@ -171,19 +171,19 @@ class GarageDoorRelay: public Relay {
       return "UKNOWN";
     }
 
-   int handle() {
+   bool handle() {
      int doorOpen = digitalRead(REED_OPEN_PIN); // Check to see of the door is open
      if (doorOpen == LOW) { // Door detected is in the open position
        if (doorState != DOOR_OPEN) {
 	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
 	 doorState = DOOR_OPEN;
-	 return 1;
+	 return true;
        }
      } else { // Door is not in the open position
        if (doorState == DOOR_OPEN ) {
 	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
 	 doorState = DOOR_CLOSING;
-	 return 1;
+	 return true;
        }
      }
 
@@ -193,20 +193,22 @@ class GarageDoorRelay: public Relay {
        if (doorState != DOOR_CLOSED) {
 	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
 	 doorState = DOOR_CLOSED;
-	 return 1;
+	 return true;
        }
      } else { // Door is not in the closed position
        if (doorState == DOOR_CLOSED) {
 	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
 	 doorState = DOOR_OPENING;
-	 return 1;
+	 return true;
        }
      }
-     return 0;
+     return false;
    }
 };
 
 class TimerRelay: public Relay {
+  time_t now, prevTime;
+
   public:
     int runTime = 0;
     int startHour;
@@ -252,11 +254,6 @@ class TimerRelay: public Relay {
      }
    }
 
-   //  Array<int,7> irrigationDays;
-   //  irrigationDays.fill(0);
-   //  irrigationDays[3] = 1;  //Thursday
-   //  irrigationDays[6] = 1;  //Sunday
-   //  lightSwitch.setDaysFromArray(irrigationDays);
    void setDaysFromArray(Array<int,7> & array) {
      for ( int n=0 ; n<7 ; n++ ) {
        runDays[n] = array[n];
@@ -272,7 +269,7 @@ class TimerRelay: public Relay {
    } 
 
    bool isTimeToStart() {
-     time_t now = time(nullptr);
+     now = time(nullptr);
      struct tm *timeinfo = localtime(&now);
      int currHour = timeinfo->tm_hour;
      int currMinute = timeinfo->tm_min;
@@ -281,7 +278,7 @@ class TimerRelay: public Relay {
      int currMinuteOfDay = (currHour * 60) + currMinute;
      int startMinuteOfDay = (startHour * 60) + startMinute;
 
-     return runDays[weekDay] && currMinuteOfDay == startMinuteOfDay;
+     return runDays[weekDay] && (currMinuteOfDay == startMinuteOfDay);
    }
 
    bool isTimeToStop() {
@@ -290,27 +287,35 @@ class TimerRelay: public Relay {
      return now >= onTime + (runTime * 60);
    }
 
-   int handle() {
+   bool handle() {
+     prevTime = now;
+     now = time(nullptr);
+     if ( ( now == prevTime ) || ( now % 60 != 10 ) ) return false;
+     
      // if we don't have runtime set, then just return
-     if ( runTime == 0 ) return 0;
-     if ( scheduleOverride ) return 5;
+     if ( runTime == 0 ) return false;
+     if ( scheduleOverride ) return false;
 
      // if we're not on, turn it on if it's the right day and time
      if ( !on && isTimeToStart() ) {
-       return 1;
+       switchOn();
+       return true;
      } 
 
      // if we're on, turn it off if it's been more than than the time to run 
      if ( on && isTimeToStop() ) {
 	 switchOff();
-	 return 2;
+	 return true;
        }
 
-     return 0;
+     return false;
    }
 };
 
+// TODO: method to display time left to run
+// TODO: status of next scheduled run time in days, hours, minutes
 class IrrigationRelay: public TimerRelay {
+  time_t now, prevTime;
   int soilPin;
   bool i2cSoilMoistureSensor = false;
   int soilMoisturePercentageToRun = -1;
@@ -346,7 +351,7 @@ class IrrigationRelay: public TimerRelay {
       wetSoilMoistureLevel = b;
     }
 
-    bool checkSoilMoisture() {
+    void checkSoilMoisture() {
       double calibratedSoilMoistureLevel = soilMoistureLevel;
 
       if (i2cSoilMoistureSensor) {
@@ -364,43 +369,59 @@ class IrrigationRelay: public TimerRelay {
       
       soilMoisturePercentage = 100 - (((calibratedSoilMoistureLevel - wetSoilMoistureLevel) / (drySoilMoistureLevel - wetSoilMoistureLevel)) * 100);
       
-      return soilMoisturePercentage < soilMoisturePercentageToRun;
+      soilDry = (soilMoisturePercentage < soilMoisturePercentageToRun) ?  true : false;
     }
 
-   bool handle() {
-     // set the soilMoisture level on every loop
-     soilDry = checkSoilMoisture();
+    const char* state() {
+      if (! soilDry) return "wet";
 
-     // if we don't have runtime set, then just return
-     if ( runTime == 0 ) return false;
-     if ( scheduleOverride ) return false;
+      if (on) {
+	return "on";
+      } else { 
+	return "off";
+      }
+    }
 
-     // if we're not on, turn it on if it's the right day and time
-     if ( !on && isTimeToStart() ) {
-       if ( !soilDry ) return false;
-       switchOn();
-       return true;
-     } 
+    bool handle() {
+      prevTime = now;
+      now = time(nullptr);
+      if ( ( now == prevTime ) || ( now % 5 != 0 ) ) return false;
 
-     // if we're on, turn it off if it's been more than than the time to run or if it's started raining
-     if ( on && isTimeToStop() ) {
-	 switchOff();
-	 return true;
-       }
+      // set the soilMoisture level on every loop
+      checkSoilMoisture();
 
-     // if we're on it started raining, turn it off
-     if ( on && !soilDry ) {
-	 switchOff();
-	 return true;
-     }
+      // if we don't have runtime set, then just return
+      if ( runTime == 0 ) return false;
+      if ( scheduleOverride ) return false;
 
-     return false;
-   }
+      // if we're not on, turn it on if it's the right day and time
+      if ( !on && isTimeToStart() ) {
+	if ( ! soilDry ) {
+	  return false;
+	}
+	switchOn();
+	return true;
+      } 
+
+      // if we're on, turn it off if it's been more than than the time to run or if it's started raining
+      if ( on && isTimeToStop() ) {
+	switchOff();
+	return true;
+      }
+
+      // if we're on it started raining, turn it off
+      if ( on && !soilDry ) {
+	switchOff();
+	return true;
+      }
+
+      return false;
+    }
 };
 
 class ScheduleRelay: public Relay {
+  time_t now, prevTime;
   const int MAX_SLOTS = 4;
-
   const int hourIndex = 0;
   const int minuteIndex = 1;
   int onTimes[4][2];
@@ -434,31 +455,32 @@ class ScheduleRelay: public Relay {
       return true;
     }
 
-   int handle() {
-     time_t now = time(nullptr);
+   bool handle() {
+     prevTime = now;
+     now = time(nullptr);
+     if ( ( now == prevTime ) || ( now % 60 != 10 ) ) return false;
+
+     if ( scheduleOverride )  return false;
+
      struct tm *timeinfo = localtime(&now);
      int currHour = timeinfo->tm_hour;
      int currMinute = timeinfo->tm_min;
-
-     if ( scheduleOverride ) {
-       return 5; 
-     }
-
      if ( ! on && findTime(currHour, currMinute, onTimes) ) {
        switchOn();
-       return 1;
+       return true;
      }
 
      if ( on && findTime(currHour, currMinute, offTimes) ) {
        switchOff();
-       return 2;
+       return true;
      }
 
-     return 0;
+     return false;
    }
 };
 
 class DuskToDawnScheduleRelay: public ScheduleRelay {
+  time_t now, prevTime;
   int const timesToSample = 10;
   int timesLight = 0;
   int timesDark = 0;
@@ -493,9 +515,9 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
     }
 
    bool handle() {
-     time_t now = time(nullptr);
-     struct tm *timeinfo = localtime(&now);
-     int currHour = timeinfo->tm_hour;
+     prevTime = now;
+     now = time(nullptr);
+     if ( ( now == prevTime ) || ( now % 5 != 0 ) ) return false;
 
      if (vemlSensor) {
        lightLevel = veml.readLux();
@@ -505,6 +527,8 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
        return false; 
      }
 
+     struct tm *timeinfo = localtime(&now);
+     int currHour = timeinfo->tm_hour;
      // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
      if ( lightLevel < dusk && ! on && !( currHour >= nightOffHour && currHour <= morningOnHour ) ) {
        timesLight = 0;
