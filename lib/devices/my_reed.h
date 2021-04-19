@@ -52,7 +52,7 @@ class ReedSwitch {
       }
     }
 
-    int handle() {
+    bool handle() {
       bool previousDoorOpen = doorOpen;
       
       if (i2cPins) {
@@ -63,11 +63,11 @@ class ReedSwitch {
 
       if (doorOpen && !previousDoorOpen) {
 	//door closed
-	return 1;
+	return true;
       }
       if (!doorOpen && previousDoorOpen) {
 	//door opened
-	return 2;
+	return true;
       }
 
       return 0;
