@@ -160,16 +160,9 @@ void handleDoor() {
 
 void loop() {
   ArduinoOTA.handle();
-
-  int doorAction = cottageDoor->handle();
-  if (doorAction == 1) {
-    syslog.log(LOG_INFO, "Cottage door opened");
-    digitalWrite(BUILTIN_LED2, doorAction);
-  }
-  if (doorAction == 2) {
-    syslog.log(LOG_INFO, "Cottage door closed");
-    digitalWrite(BUILTIN_LED2, doorAction);
-  }
-
   server.handleClient();
+
+  if ( cottageDoor->handle() ) {
+    syslog.logf(LOG_INFO, "%s %sed", cottageDoor->name, cottageDoor->state());
+  }
 }

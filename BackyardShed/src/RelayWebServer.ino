@@ -24,9 +24,6 @@
 #define JSON_SIZE 500
 #define MYTZ TZ_America_Los_Angeles
 
-//TODO
-// move name to constructor and move pin assignment to setup
-
 ESP8266WebServer server(80);
 
 // A UDP instance to let us send and receive packets over UDP
@@ -52,9 +49,6 @@ Adafruit_MCP23017 mcp;
 Vector<IrrigationRelay*> IrrigationZones;
 
 IrrigationRelay * storage_array[8];
-
-ScheduleRelay * schedTest1 = new ScheduleRelay(TX_PIN);
-DuskToDawnScheduleRelay * d2dSchedTest1 = new DuskToDawnScheduleRelay(TX_PIN);
 
 ReedSwitch * shedDoor = new ReedSwitch(REED_PIN, &mcp);
 
@@ -88,13 +82,6 @@ void setup() {
 
   // setup the reed switch on the shed door
   shedDoor->setup("shed_door");
-
-  schedTest1->setup("schedule test");
-  schedTest1->setOnOffTimes(10, 42, 10, 43);
-  d2dSchedTest1->setup("dusk to dawn test");
-  if (!d2dSchedTest1->setVemlLightSensor()) {
-    syslog.log(LOG_INFO, "ERROR: setVemlLightSensor() failed");
-  }
 
   IrrigationZones.setStorage(storage_array);
 
@@ -169,7 +156,6 @@ void handleStatus() {
    switches[relay->name]["soilMoisturePercentage"] = relay->soilMoisturePercentage;
   } 
 
-  sensors["luxLevel"] = d2dSchedTest1->lightLevel;
   sensors["doorStatus"] = shedDoor->status();
   doc["irrigationReturnCode"] = irrigationAction;
   doc["debug"] = debug;
@@ -237,55 +223,17 @@ time_t prevTime = 0;;
 int prevIrrigationAction = 0;
 void loop() {
   ArduinoOTA.handle();
+  server.handleClient();
 
-  int reedAction = shedDoor->handle();
-  if (reedAction == 1) {
-    syslog.log(LOG_INFO, "Shed door opened");
-  }
-  if (reedAction == 2) {
-    syslog.log(LOG_INFO, "Shed door closed");
+  if ( shedDoor->handle() ) {
+    syslog.logf(LOG_INFO, "%s %sed", shedDoor->name, shedDoor->state());
   }
 
-  time_t now = time(nullptr);
-  if ( now != prevTime ) {
-    if ( now % 5 == 0 ) {
-
-      irrigationAction = schedTest1->handle();
-      if ( irrigationAction == 1 ) {
-	syslog.logf(LOG_INFO, "scheduled light '%s' turned on", schedTest1->name);
-      } 
-      if ( irrigationAction == 2 ) {
-	syslog.logf(LOG_INFO, "scheduled light '%s' turned off", schedTest1->name);
-      } 
-
-      for (IrrigationRelay * relay : IrrigationZones) {
-	irrigationAction = relay->handle();
-	if ( irrigationAction == 1 ) {
-	  syslog.logf(LOG_INFO, "scheduled irrigation started for zone %s", relay->name);
-	} 
-	if ( irrigationAction == 2 ) {
-	  syslog.logf(LOG_INFO, "scheduled irrigation stopped for zone %s", relay->name);
-	}
-	if ( prevIrrigationAction != 3 && irrigationAction == 3 ) {
-	  syslog.logf(LOG_INFO, "scheduled irrigation for zone %s not started because the soil's wet", relay->name);
-	}
-	if ( prevIrrigationAction != 4 && irrigationAction == 4 ) {
-	  syslog.logf(LOG_INFO, "scheduled irrigation stopped for zone %s because the soil's wet", relay->name);
-	}
-      }
-
-      irrigationAction = d2dSchedTest1->handle();
-      if ( irrigationAction == 1 ) {
-	syslog.logf(LOG_INFO, "D2D light '%s' turned on", d2dSchedTest1->name);
-      } 
-      if ( irrigationAction == 2 ) {
-	syslog.logf(LOG_INFO, "D2D light '%s' turned off", d2dSchedTest1->name);
-      } 
+  for (IrrigationRelay * relay : IrrigationZones) {
+    if ( relay->handle() ) {
+      syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", relay->name, relay->state(), relay->soilMoisturePercentage);
     }
   }
-  prevTime = now;
-
-  server.handleClient();
 }
 
 
