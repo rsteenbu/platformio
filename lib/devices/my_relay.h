@@ -29,6 +29,8 @@ class Relay {
     bool scheduleOverride = false;
     time_t onTime = 0;
     time_t offTime = 0;
+    char prettyOffTime[18];
+    char prettyOnTime[18];
     char* name;
 
     //constructors
@@ -72,7 +74,9 @@ class Relay {
 	digitalWrite(pin, offVal); // start off
       }
       configTime(MYTZ, "pool.ntp.org");
-      offTime = time(nullptr);
+      onTime = offTime = time(nullptr);
+      strcpy(prettyOnTime,"None");
+      strcpy(prettyOffTime,"None");
     }
 
     void switchOn() {
@@ -80,6 +84,8 @@ class Relay {
         i2cPins ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
         on = true;
 	onTime = time(nullptr);
+	struct tm *timeinfo = localtime(&onTime);
+	strftime (prettyOnTime,18,"%D %T",timeinfo);
       }
     }
 
@@ -88,6 +94,8 @@ class Relay {
         i2cPins ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
         on = false;
 	offTime = time(nullptr);
+	struct tm *timeinfo = localtime(&offTime);
+	strftime (prettyOffTime,18,"%D %T",timeinfo);
       }
     }
 
@@ -207,12 +215,59 @@ class GarageDoorRelay: public Relay {
 };
 
 class TimerRelay: public Relay {
-  time_t now, prevTime;
+  protected:
+    time_t now, prevTime = 0;
+
+    void setTimeLeftToRun() {
+      if ( ! on ) { 
+        strcpy(timeLeftToRun, "Not running");
+      } else {
+        int secondsLeft = (runTime * 60) - (now - onTime);
+        int minutes = secondsLeft / 60;
+        int seconds = secondsLeft % 60;
+  
+        sprintf(timeLeftToRun, "%d:%02d", minutes, seconds);
+      }
+    }
+
+    void setNextTimeToRun() {
+      struct tm *timeinfo = localtime(&now);
+      int currWeekDay = timeinfo->tm_wday;
+      int currHour = timeinfo->tm_hour;
+      int currMinute = timeinfo->tm_min;
+      int currSecond = timeinfo->tm_sec;
+
+      if ( startMinuteOfDay == 0 ) {
+        strcpy(nextTimeToRun,"No start time");
+        return;
+      }
+
+      int currMinuteOfDay = (currHour * 60) + currMinute;
+
+      for ( int n=0 ; n<7 ; n++ ) {
+        // skip today if we're past the start time
+        if ( n == 0 && currMinuteOfDay >= startMinuteOfDay) {
+  	continue;
+        }
+
+        int dayOfWeek = (n + currWeekDay) & 7;
+        if (runDays[dayOfWeek]) {
+
+  	time_t startTime = now - currMinuteOfDay*60 + n*24*60*60 + startMinuteOfDay*60 - currSecond;
+  	struct tm *timeinfo = localtime(&startTime);
+  	strftime (nextTimeToRun,18,"%D %T",timeinfo);
+  	return;
+        }
+      }
+
+      strcpy(nextTimeToRun,"No days set");
+    }
 
   public:
     int runTime = 0;
-    int startHour;
-    int startMinute;
+    int startMinuteOfDay = 0;
+    char timeLeftToRun[12];
+    char nextTimeToRun[18];
     Array<int,7> runDays;
 
     //constructurs
@@ -226,10 +281,13 @@ class TimerRelay: public Relay {
     void setRuntime(int a) {
       runTime = a;
     }
+
+    void setScheduleOverride(bool a) {
+      scheduleOverride = a;
+    }
     
     void setStartTime(int a, int b) {
-      startHour = a;
-      startMinute = b;
+      startMinuteOfDay = a * 60 + b;
     }
 
    void setEveryOtherDayOn() {
@@ -269,27 +327,28 @@ class TimerRelay: public Relay {
    } 
 
    bool isTimeToStart() {
-     now = time(nullptr);
      struct tm *timeinfo = localtime(&now);
      int currHour = timeinfo->tm_hour;
      int currMinute = timeinfo->tm_min;
      int weekDay = timeinfo->tm_wday;
 
-     int currMinuteOfDay = (currHour * 60) + currMinute;
-     int startMinuteOfDay = (startHour * 60) + startMinute;
-
-     return runDays[weekDay] && (currMinuteOfDay == startMinuteOfDay);
+     return runDays[weekDay] && (((currHour * 60) + currMinute) == startMinuteOfDay);
    }
 
    bool isTimeToStop() {
-     time_t now = time(nullptr);
-
      return now >= onTime + (runTime * 60);
    }
 
    bool handle() {
      prevTime = now;
      now = time(nullptr);
+
+     //uptime the time left to run every second
+     if ( now != prevTime ) { 
+       setTimeLeftToRun();
+       setNextTimeToRun();
+     }
+
      if ( ( now == prevTime ) || ( now % 60 != 10 ) ) return false;
      
      // if we don't have runtime set, then just return
@@ -315,7 +374,6 @@ class TimerRelay: public Relay {
 // TODO: method to display time left to run
 // TODO: status of next scheduled run time in days, hours, minutes
 class IrrigationRelay: public TimerRelay {
-  time_t now, prevTime;
   int soilPin;
   bool i2cSoilMoistureSensor = false;
   int soilMoisturePercentageToRun = -1;
@@ -385,6 +443,14 @@ class IrrigationRelay: public TimerRelay {
     bool handle() {
       prevTime = now;
       now = time(nullptr);
+
+      //uptime the time left to run every second
+      if ( now != prevTime ) { 
+	setTimeLeftToRun();
+	setNextTimeToRun();
+      }
+
+      // only process the rest every 5 seconds
       if ( ( now == prevTime ) || ( now % 5 != 0 ) ) return false;
 
       // set the soilMoisture level on every loop
@@ -420,13 +486,15 @@ class IrrigationRelay: public TimerRelay {
 };
 
 class ScheduleRelay: public Relay {
-  time_t now, prevTime;
   const int MAX_SLOTS = 4;
   const int hourIndex = 0;
   const int minuteIndex = 1;
   int onTimes[4][2];
   int offTimes[4][2];
   int slotsTaken = -1;
+
+  protected:
+    time_t now, prevTime = 0;
 
   bool findTime(int hour, int min, int timeArray[4][2] ) {
     for (int i = 0; i <= slotsTaken; i++) {
@@ -458,7 +526,7 @@ class ScheduleRelay: public Relay {
    bool handle() {
      prevTime = now;
      now = time(nullptr);
-     if ( ( now == prevTime ) || ( now % 60 != 10 ) ) return false;
+     if ( ( now == prevTime ) || ( now % 5 != 0 ) ) return false;
 
      if ( scheduleOverride )  return false;
 
@@ -480,7 +548,6 @@ class ScheduleRelay: public Relay {
 };
 
 class DuskToDawnScheduleRelay: public ScheduleRelay {
-  time_t now, prevTime;
   int const timesToSample = 10;
   int timesLight = 0;
   int timesDark = 0;

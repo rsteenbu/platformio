@@ -21,7 +21,7 @@
 
 // This device info
 #define APP_NAME "switch"
-#define JSON_SIZE 500
+#define JSON_SIZE 750
 #define MYTZ TZ_America_Los_Angeles
 
 ESP8266WebServer server(80);
@@ -41,7 +41,6 @@ const int GPIO2_PIN=2;
 const int REED_PIN = 15;
 
 int debug = 0;
-int irrigationAction = 0;
 
 StaticJsonDocument<200> doc;
 
@@ -87,10 +86,10 @@ void setup() {
 
   // Garden Irrigation
   IrrigationRelay * irz1 = new IrrigationRelay(0, &mcp);
-  irz1->setup("garden");
   irz1->setBackwards();
+  irz1->setup("garden");
   irz1->setRuntime(1);
-  irz1->setStartTime(17,1); // hour, minute
+  irz1->setStartTime(18,2); // hour, minute
   irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
   irz1->setSoilMoistureLimits(465, 228); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 1 %s setup done", irz1->name);
@@ -98,10 +97,14 @@ void setup() {
 
   // Pots and Plants Irrigation
   IrrigationRelay * irz2 = new IrrigationRelay(1, &mcp);
-  irz2->setup("patio_pots");
   irz2->setBackwards();
-  irz2->setRuntime(1);
-  irz2->setStartTime(17,2); // hour, minute
+  irz2->setup("patio_pots");
+  irz2->setEveryDayOff();
+  irz2->setSpecificDayOn(0);
+  irz2->setSpecificDayOn(3);
+  irz2->setSpecificDayOn(5);
+  irz2->setRuntime(10);
+  irz2->setStartTime(18,3); // hour, minute
   irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
   irz2->setSoilMoistureLimits(727, 310); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
@@ -111,14 +114,8 @@ void setup() {
   server.on("/debug", handleDebug);
   server.on("/status", handleStatus);
   server.on("/irrigation", handleIrrigation);
-  server.on("/d2d", handleD2D);
 
   server.begin();
-}
-
-void handleD2D() {
-  if (server.arg("level") == "status") {
-  }
 }
 
 void handleDebug() {
@@ -151,13 +148,16 @@ void handleStatus() {
   JsonObject switches = doc.createNestedObject("switches");
   JsonObject sensors = doc.createNestedObject("sensors");
   for (IrrigationRelay * relay : IrrigationZones) {
-   switches[relay->name]["state"] = relay->state();
-   switches[relay->name]["soilMoistureLevel"] = relay->soilMoistureLevel;
-   switches[relay->name]["soilMoisturePercentage"] = relay->soilMoisturePercentage;
+    switches[relay->name]["State"] = relay->state();
+    switches[relay->name]["Soil Moisture Level"] = relay->soilMoistureLevel;
+    switches[relay->name]["Soil Moisture Percentage"] = relay->soilMoisturePercentage;
+
+    switches[relay->name]["Time Left"] = relay->timeLeftToRun;
+    switches[relay->name]["Last Run Time"] = relay->prettyOnTime;
+    switches[relay->name]["Next Run Time"] = relay->nextTimeToRun;
   } 
 
-  sensors["doorStatus"] = shedDoor->status();
-  doc["irrigationReturnCode"] = irrigationAction;
+  sensors["Door Status"] = shedDoor->state();
   doc["debug"] = debug;
 
   char timeString[20];
