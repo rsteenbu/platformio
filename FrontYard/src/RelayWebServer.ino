@@ -240,6 +240,9 @@ void handleStatus() {
   JsonObject switches = doc.createNestedObject("switches");
   switches["irrigation"]["state"] = irrigation->state();
   switches["irrigation"]["override"] = irrigation->scheduleOverride;
+  switches["irrigation"]["Time Left"] = irrigation->timeLeftToRun;
+  switches["irrigation"]["Last Run Time"] = irrigation->prettyOnTime;
+  switches["irrigation"]["Next Run Time"] = irrigation->nextTimeToRun;
   switches["lvLights"]["state"] = lvLights->state();
   switches["lvLights"]["override"] = lvLights->scheduleOverride;
 
