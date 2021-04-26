@@ -91,7 +91,7 @@ void setup() {
   irz1->setRuntime(1);
   irz1->setStartTime(18,2); // hour, minute
   irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
-  irz1->setSoilMoistureLimits(465, 228); // dry, wet
+  irz1->setSoilMoistureLimits(660, 218); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 1 %s setup done", irz1->name);
   IrrigationZones.push_back(irz1);
 
@@ -105,8 +105,8 @@ void setup() {
   irz2->setSpecificDayOn(5);
   irz2->setRuntime(10);
   irz2->setStartTime(18,3); // hour, minute
-  irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
-  irz2->setSoilMoistureLimits(727, 310); // dry, wet
+  irz2->setSoilMoistureSensor(0x49, 0, 86); // i2c address, pin, % to run
+  irz2->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
   IrrigationZones.push_back(irz2);
 
@@ -226,7 +226,7 @@ void loop() {
   server.handleClient();
 
   if ( shedDoor->handle() ) {
-    syslog.logf(LOG_INFO, "%s %sed", shedDoor->name, shedDoor->state());
+    syslog.logf(LOG_INFO, "%s %s", shedDoor->name, shedDoor->state());
   }
 
   for (IrrigationRelay * relay : IrrigationZones) {
