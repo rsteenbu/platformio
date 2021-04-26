@@ -8,8 +8,8 @@
 #include <FastLED.h>
 
 // WiFi credentials.
-//const char* WIFI_SSID = "***REMOVED***";
-//const char* WIFI_PASS = "***REMOVED***";
+//const char* WIFI_SSID = "Herkimer";
+//const char* WIFI_PASS = "1nig0Montoya";
 const char* SYSLOG_SERVER = "ardupi4";
 const int SYSLOG_PORT = 514;
 const char* DEVICE_HOSTNAME = "iot-ledstrip";

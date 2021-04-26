@@ -17,8 +17,8 @@
  
 // Create an instance of the server
 // specify the port to listen on as an argument
-const char* ssid = "***REMOVED***";
-const char* password = "***REMOVED***";
+const char* ssid = "Herkimer";
+const char* password = "1nig0Montoya";
 WiFiServer server(80);
 // Syslog server connection info
 const char* SYSLOG_SERVER = "ardupi4";

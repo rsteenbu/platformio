@@ -1,2 +1,2 @@
-#define SECRET_SSID "***REMOVED***"
-#define SECRET_PASS "***REMOVED***"
+#define SECRET_SSID "Herkimer"
+#define SECRET_PASS "1nig0Montoya"

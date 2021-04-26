@@ -12,10 +12,6 @@
 #include <Adafruit_ADS1X15.h>
 #include <my_veml.h>
 
-class IrrigationZones {
-
-};
-
 class Relay {
   int pin;
   int onVal = HIGH;

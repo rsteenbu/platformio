@@ -38,7 +38,7 @@ class ReedSwitch {
 
     const char* state() {
       if (doorOpen) {
-	return "open";
+	return "opened";
       } else {
 	return "closed";
       }

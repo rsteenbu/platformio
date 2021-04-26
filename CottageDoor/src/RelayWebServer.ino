@@ -163,6 +163,6 @@ void loop() {
   server.handleClient();
 
   if ( cottageDoor->handle() ) {
-    syslog.logf(LOG_INFO, "%s %sed", cottageDoor->name, cottageDoor->state());
+    syslog.logf(LOG_INFO, "%s %s", cottageDoor->name, cottageDoor->state());
   }
 }
