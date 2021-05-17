@@ -379,9 +379,10 @@ class IrrigationRelay: public TimerRelay {
   Adafruit_ADS1015 ads;     /* Use this for the 12-bit version */
 
   public:
-    double soilMoisturePercentage;
+    bool soilMoistureSensor = false;
+    double soilMoisturePercentage = -1;
     double soilMoistureLevel = -1;
-    bool soilDry = false;
+    bool soilDry = true;
 
     //constructors
     IrrigationRelay (int a): TimerRelay(a) { }
@@ -389,11 +390,13 @@ class IrrigationRelay: public TimerRelay {
 
     // turn on the soilMoisture check at soilMoisturePercentageToRun
     void setSoilMoistureSensor(int a, int b) {
+      soilMoistureSensor = true;
       soilPin = a;
       soilMoisturePercentageToRun = b;
     }
 
     void setSoilMoistureSensor(uint8_t a, int b, int c) {
+      soilMoistureSensor = true;
       i2cSoilMoistureSensor = true;
       ads.begin(a);
       soilPin = b;
@@ -450,7 +453,7 @@ class IrrigationRelay: public TimerRelay {
       if ( ( now == prevTime ) || ( now % 5 != 0 ) ) return false;
 
       // set the soilMoisture level on every loop
-      checkSoilMoisture();
+      if (soilMoistureSensor) checkSoilMoisture();
 
       // if we don't have runtime set, then just return
       if ( runTime == 0 ) return false;

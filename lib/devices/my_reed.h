@@ -7,10 +7,12 @@ class ReedSwitch {
   int pin;
   Adafruit_MCP23017* mcp;
   bool i2cPins = false;
+  const int DOOR_OPEN = 1;
+  const int DOOR_CLOSED = 1;
 
   public:
     //variables
-    bool doorOpen;
+    int doorStatus;
     char* name;
 
     //constructors
@@ -37,7 +39,7 @@ class ReedSwitch {
     }
 
     const char* state() {
-      if (doorOpen) {
+      if (doorStatus == DOOR_OPEN) {
 	return "opened";
       } else {
 	return "closed";
@@ -45,32 +47,19 @@ class ReedSwitch {
     }
 
     int status() {
-      if (doorOpen) {
-	return 1;
-      } else {
-	return 0;
-      }
+      return doorStatus;
     }
 
     bool handle() {
-      bool previousDoorOpen = doorOpen;
+      int previousDoorStatus = doorStatus;
       
       if (i2cPins) {
-	doorOpen = (*mcp).digitalRead(pin) ? true : false; // Check the door
+	doorStatus = (*mcp).digitalRead(pin); // Check the door
       } else {
-	doorOpen = digitalRead(pin) ? true : false; // Check the door
+	doorStatus = digitalRead(pin); // Check the door
       }
 
-      if (doorOpen && !previousDoorOpen) {
-	//door closed
-	return true;
-      }
-      if (!doorOpen && previousDoorOpen) {
-	//door opened
-	return true;
-      }
-
-      return 0;
+      return doorStatus != previousDoorStatus;
     }
 };
 

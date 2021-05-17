@@ -151,8 +151,10 @@ void handleRelay() {
 }
 
 void handleDoor() {
+  char msg[10];
+  sprintf(msg, "%d", cottageDoor->status());
   if (server.arg("state") == "status") {
-    server.send(200, "text/plain", cottageDoor->state());
+    server.send(200, "text/plain", msg);
     return;
   } 
   server.send(404, "text/plain", "ERROR: uknonwn state command");
