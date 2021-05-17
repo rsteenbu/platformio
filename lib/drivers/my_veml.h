@@ -12,10 +12,10 @@ class Veml {
     // public variables
     int integrationTime = 0;
     double gain = 0;
+    bool initialized = false;
 
     // public functions
     bool setup() {
-      bool initialized = false;
 
       if (veml.begin()) {
 	veml.setGain(VEML7700_GAIN_1);
@@ -48,7 +48,11 @@ class Veml {
     }
 
     int readLux() {
-      return veml.readLux();
+      if ( initialized ) {
+	return veml.readLux();
+      } else { 
+	return -1;
+      }
     }
 };
 #endif
