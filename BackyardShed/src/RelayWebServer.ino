@@ -13,6 +13,7 @@
 
 #include <my_relay.h>
 #include <my_reed.h>
+#include <my_veml.h>
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -21,7 +22,7 @@
 
 // This device info
 #define APP_NAME "switch"
-#define JSON_SIZE 750
+#define JSON_SIZE 1500
 #define MYTZ TZ_America_Los_Angeles
 
 ESP8266WebServer server(80);
@@ -31,6 +32,8 @@ WiFiUDP udpClient;
 
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+
+Veml veml;
 
 // ESP-01 Pins
 const int TX_PIN=1;
@@ -74,46 +77,128 @@ void setup() {
   ArduinoOTA.begin();
 
   configTime(MYTZ, "pool.ntp.org");
-  
+
   // set I2C pins (SDA, SDL)
-  Wire.begin(GPIO2_PIN, GPIO0_PIN);
+  //Wire.begin(GPIO2_PIN, GPIO0_PIN);
+  Wire.begin(GPIO0_PIN, GPIO2_PIN);
   mcp.begin();      // use default address 0
 
+  if ( ! veml.setup() ) {
+    syslog.log(LOG_INFO, "ERROR: veml setup failed");
+  }
+  
   // setup the reed switch on the shed door
   shedDoor->setup("shed_door");
 
   IrrigationZones.setStorage(storage_array);
 
-  // Garden Irrigation
-  IrrigationRelay * irz1 = new IrrigationRelay(0, &mcp);
+  // Soil Moisture Sensor addresses: 0x48, 0x49, 0x4a, 0x4b
+
+  // Program A:
+  // 07:00, 11:00, 15:00, 19:00
+  // 1: 5m, 1: 14m, 3: 13m, 4: 5m
+  // Su, Mo, We, Th, Fr
+  // Program B:
+  // Su
+  // 4: 5m
+
+  //TODO: multiple start times
+  //TODO: schedule override set automatically when started manually
+  //TODO: add starttimes to status
+
+  // Pots and Plants Irrigation
+  IrrigationRelay * irz1 = new IrrigationRelay(7, &mcp);
   irz1->setBackwards();
-  irz1->setup("garden");
-  irz1->setRuntime(1);
-  irz1->setStartTime(18,2); // hour, minute
-  irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
-  irz1->setSoilMoistureLimits(660, 218); // dry, wet
+  irz1->setup("patio_pots");
+  irz1->setRuntime(5);
+  irz1->setStartTime(9,1); // hour, minute
+//  irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
+//  irz1->setSoilMoistureLimits(660, 218); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 1 %s setup done", irz1->name);
   IrrigationZones.push_back(irz1);
 
-  // Pots and Plants Irrigation
-  IrrigationRelay * irz2 = new IrrigationRelay(1, &mcp);
+  IrrigationRelay * irz2 = new IrrigationRelay(6, &mcp);
   irz2->setBackwards();
-  irz2->setup("patio_pots");
-  irz2->setEveryDayOff();
-  irz2->setSpecificDayOn(0);
-  irz2->setSpecificDayOn(3);
-  irz2->setSpecificDayOn(5);
-  irz2->setRuntime(10);
-  irz2->setStartTime(18,3); // hour, minute
-  irz2->setSoilMoistureSensor(0x49, 0, 86); // i2c address, pin, % to run
-  irz2->setSoilMoistureLimits(430, 179); // dry, wet
+  irz2->setup("cottage");
+//  irz2->setRuntime(10);
+//  irz2->setStartTime(18,3); // hour, minute
+//  irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
+//  irz2->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
   IrrigationZones.push_back(irz2);
+
+  // Zone3
+  IrrigationRelay * irz3 = new IrrigationRelay(5, &mcp);
+  irz3->setBackwards();
+  irz3->setup("south_fence");
+  irz3->setRuntime(5);
+  irz3->setStartTime(9,10); // hour, minute
+//  irz3->setSoilMoistureSensor(0x48, 2, 86); // i2c address, pin, % to run
+//  irz3->setSoilMoistureLimits(430, 179); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 3 %s setup done", irz3->name); 
+  IrrigationZones.push_back(irz3);
+
+  // Zone4
+  IrrigationRelay * irz4 = new IrrigationRelay(4, &mcp);
+  irz4->setBackwards();
+  irz4->setup("hill");
+//  irz4->setRuntime(10);
+//  irz4->setStartTime(18,3); // hour, minute
+//  irz4->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
+//  irz4->setSoilMoistureLimits(430, 179); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 4 %s setup done", irz4->name); 
+  IrrigationZones.push_back(irz4);
+
+  // Zone5
+  IrrigationRelay * irz5 = new IrrigationRelay(3, &mcp);
+  irz5->setBackwards();
+  irz5->setup("zone5");
+//  irz5->setRuntime(10);
+//  irz5->setStartTime(18,3); // hour, minute
+//  irz5->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
+//  irz5->setSoilMoistureLimits(430, 179); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 5 %s setup done", irz5->name); 
+  IrrigationZones.push_back(irz5);
+
+  // Zone6
+  IrrigationRelay * irz6 = new IrrigationRelay(2, &mcp);
+  irz6->setBackwards();
+  irz6->setup("zone6");
+//  irz6->setRuntime(10);
+//  irz6->setStartTime(18,3); // hour, minute
+//  irz6->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
+//  irz6->setSoilMoistureLimits(430, 179); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 6 %s setup done", irz6->name); 
+  IrrigationZones.push_back(irz6);
+
+  // Zone7
+  IrrigationRelay * irz7 = new IrrigationRelay(1, &mcp);
+  irz7->setBackwards();
+  irz7->setup("zone7");
+//  irz7->setRuntime(10);
+//  irz7->setStartTime(18,3); // hour, minute
+//  irz7->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
+//  irz7->setSoilMoistureLimits(430, 179); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 7 %s setup done", irz7->name); 
+  IrrigationZones.push_back(irz7);
+
+  // Zone8
+  IrrigationRelay * irz8 = new IrrigationRelay(0, &mcp);
+  irz8->setBackwards();
+  irz8->setup("zone8");
+//  irz8->setRuntime(10);
+//  irz8->setStartTime(18,3); // hour, minute
+//  irz8->setSoilMoistureSensor(0x4b, 0, 86); // i2c address, pin, % to run
+//  irz8->setSoilMoistureLimits(430, 179); // dry, wet
+  syslog.logf(LOG_INFO, "irrigation Zone 8 %s setup done", irz8->name); 
+  IrrigationZones.push_back(irz8);
+
 
   // Start the server
   server.on("/debug", handleDebug);
   server.on("/status", handleStatus);
   server.on("/irrigation", handleIrrigation);
+  server.on("/zones", handleZones);
 
   server.begin();
 }
@@ -140,24 +225,53 @@ void handleDebug() {
   }
 }
 
+void handleZones() {
+  String zones;
+
+  bool first = true;
+  for (IrrigationRelay * relay : IrrigationZones) {
+    if ( first ) {
+      zones = relay->name;
+      first = false;
+    } else {
+      zones = zones + ", " + relay->name;
+    }
+  }
+  server.send(200, "text/plain", zones);
+}
+
 void handleStatus() {
   time_t now;
   now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
+  char suppliedZone[15];
+  server.arg("zone").toCharArray(suppliedZone, 15);
+  bool matchFound = false;
 
   JsonObject switches = doc.createNestedObject("switches");
   JsonObject sensors = doc.createNestedObject("sensors");
   for (IrrigationRelay * relay : IrrigationZones) {
-    switches[relay->name]["State"] = relay->state();
-    switches[relay->name]["Soil Moisture Level"] = relay->soilMoistureLevel;
-    switches[relay->name]["Soil Moisture Percentage"] = relay->soilMoisturePercentage;
+    if (server.arg("zone") == relay->name) {
+      matchFound = true;
+      switches[relay->name]["State"] = relay->state();
+      switches[relay->name]["Soil Moisture Level"] = relay->soilMoistureLevel;
+      switches[relay->name]["Soil Moisture Percentage"] = relay->soilMoisturePercentage;
 
-    switches[relay->name]["Time Left"] = relay->timeLeftToRun;
-    switches[relay->name]["Last Run Time"] = relay->prettyOnTime;
-    switches[relay->name]["Next Run Time"] = relay->nextTimeToRun;
+      switches[relay->name]["Time Left"] = relay->timeLeftToRun;
+      switches[relay->name]["Last Run Time"] = relay->prettyOnTime;
+      switches[relay->name]["Next Run Time"] = relay->nextTimeToRun;
+    }
   } 
 
+  if (!matchFound) {
+    char msg[60];
+    sprintf(msg, "ERROR: irrigation zone %s not found", suppliedZone);
+    server.send(404, "text/plain", msg);
+    return;
+  }
+
   sensors["Door Status"] = shedDoor->state();
+  sensors["Light Level"] = veml.readLux();
   doc["debug"] = debug;
 
   char timeString[20];
@@ -189,7 +303,17 @@ void handleIrrigation() {
 
     if (server.arg("zone") == relay->name) {
       matchFound = true;
-      if (server.arg("state") == "status") {
+      if (server.arg("override") == "true") {
+	syslog.logf(LOG_INFO, "Disabling schedule for irrigation zone %s on by API request", relay->name);
+	relay->setScheduleOverride(true);
+	server.send(200, "text/plain");
+	return;
+      } else if (server.arg("override") == "false") {
+	syslog.logf(LOG_INFO, "Enabling schedule for irrigation zone %s on by API request", relay->name);
+	relay->setScheduleOverride(false);
+	server.send(200, "text/plain");
+	return;
+      } else if (server.arg("state") == "status") {
 	server.send(200, "text/plain", relay->status() ? "1" : "0");
 	return;
       } else if (server.arg("state") == "on") {
@@ -220,14 +344,17 @@ void handleIrrigation() {
 }
 
 time_t prevTime = 0;;
-int prevIrrigationAction = 0;
 void loop() {
   ArduinoOTA.handle();
   server.handleClient();
 
-  if ( shedDoor->handle() ) {
-    syslog.logf(LOG_INFO, "%s %s", shedDoor->name, shedDoor->state());
+  time_t now = time(nullptr);
+  if (prevTime != now) {
+    if ( shedDoor->handle() ) {
+      syslog.logf(LOG_INFO, "%s %s", shedDoor->name, shedDoor->state());
+    }
   }
+  prevTime = now;
 
   for (IrrigationRelay * relay : IrrigationZones) {
     if ( relay->handle() ) {
