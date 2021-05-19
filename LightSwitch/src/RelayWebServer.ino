@@ -17,7 +17,7 @@
 
 // This device info
 #define APP_NAME "switch"
-#define JSON_SIZE 200
+#define JSON_SIZE 300
 
 ESP8266WebServer server(80);
 
@@ -35,14 +35,11 @@ const int RX_PIN=3;
 const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
 
-Relay * lightSwitch = new ScheduleRelay(TX_PIN);
+TimerRelay * lightSwitch = new TimerRelay(TX_PIN);
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Booting up");
-
-  // Setup the Relay
-  lightSwitch->setup("lightswitch");
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -63,6 +60,14 @@ void setup() {
   ArduinoOTA.begin();
 
   configTime(MYTZ, "pool.ntp.org");
+
+  // Setup the Relay
+  lightSwitch->setup("lightswitch");
+  lightSwitch->setRuntime(5);
+  lightSwitch->setStartTime(23,25); // hour, minute
+  lightSwitch->setStartTime(21,21); // hour, minute
+  lightSwitch->setStartTime(22,54); // hour, minute
+  lightSwitch->setStartTime(8,10); // hour, minute
 
   // Start the server
   server.on("/debug", handleDebug);
@@ -100,13 +105,16 @@ void handleStatus() {
   JsonObject switches = doc.createNestedObject("switches");
 
   switches["light"]["state"] = lightSwitch->state();
+  switches["light"]["override"] = lightSwitch->scheduleOverride;
+  switches["light"]["Time Left"] = lightSwitch->timeLeftToRun;
+  switches["light"]["Last Run Time"] = lightSwitch->prettyOnTime;
+  switches["light"]["Next Run Time"] = lightSwitch->nextTimeToRun;
   doc["debug"] = debug;
 
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
   strftime (timeString,20,"%D %T",timeinfo);
   doc["time"] = timeString;
-  doc["string"] = testCharArray;
 
   size_t jsonDocSize = measureJsonPretty(doc);
   if (jsonDocSize > JSON_SIZE) {
@@ -136,17 +144,16 @@ void handleLight() {
   }
 }
 
-time_t now;
 time_t prevTime = 0;;
 void loop() {
   ArduinoOTA.handle();
+  server.handleClient();
 
-  now = time(nullptr);
+  time_t now = time(nullptr);
   if ( now != prevTime ) {
-    if ( now % 5 == 0 ) {
+    if ( lightSwitch->handle() ) {
+      syslog.logf(LOG_INFO, "%s %s", lightSwitch->name, lightSwitch->state());
     }
   }
   prevTime = now;
-
-  server.handleClient();
 }

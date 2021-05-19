@@ -19,6 +19,27 @@ class Relay {
   Adafruit_MCP23017* mcp;
   bool i2cPins = false;
 
+  protected:
+    void internalOn() {
+      if (!on) {
+        i2cPins ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
+        on = true;
+	onTime = time(nullptr);
+	struct tm *timeinfo = localtime(&onTime);
+	strftime (prettyOnTime,18,"%D %T",timeinfo);
+      }
+    }
+
+    void internalOff() {
+      if (on) {
+        i2cPins ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
+        on = false;
+	offTime = time(nullptr);
+	struct tm *timeinfo = localtime(&offTime);
+	strftime (prettyOffTime,18,"%D %T",timeinfo);
+      }
+    }
+
   public:
     //variables
     bool on = false;
@@ -76,23 +97,13 @@ class Relay {
     }
 
     void switchOn() {
-      if (!on) {
-        i2cPins ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
-        on = true;
-	onTime = time(nullptr);
-	struct tm *timeinfo = localtime(&onTime);
-	strftime (prettyOnTime,18,"%D %T",timeinfo);
-      }
+      scheduleOverride = true;
+      internalOn();
     }
-
+    
     void switchOff() {
-      if (on) {
-        i2cPins ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
-        on = false;
-	offTime = time(nullptr);
-	struct tm *timeinfo = localtime(&offTime);
-	strftime (prettyOffTime,18,"%D %T",timeinfo);
-      }
+      scheduleOverride = false;
+      internalOff();
     }
 
     const char* state() {
@@ -152,9 +163,9 @@ class GarageDoorRelay: public Relay {
 
     void operate() {
 	onTime = time(nullptr);
-        switchOn();
+        internalOn();
 	delay(100);
-        switchOff();
+        internalOff();
     }
 
     const char* state() {
@@ -211,6 +222,8 @@ class GarageDoorRelay: public Relay {
 };
 
 class TimerRelay: public Relay {
+  const int START_TIME_ELEMENT_COUNT = 5;
+
   protected:
     time_t now, prevTime = 0;
 
@@ -233,38 +246,45 @@ class TimerRelay: public Relay {
       int currMinute = timeinfo->tm_min;
       int currSecond = timeinfo->tm_sec;
 
-      if ( startMinuteOfDay == 0 ) {
-        strcpy(nextTimeToRun,"No start time");
+      if ( startTimesOfDay.size() == 0 ) {
         return;
       }
 
       int currMinuteOfDay = (currHour * 60) + currMinute;
 
-      for ( int n=0 ; n<7 ; n++ ) {
-        // skip today if we're past the start time
-        if ( n == 0 && currMinuteOfDay >= startMinuteOfDay) {
-  	continue;
-        }
-
+      int timeFound = 0;
+      int n;
+      for ( n=0 ; n<7 ; n++ ) {
         int dayOfWeek = (n + currWeekDay) & 7;
-        if (runDays[dayOfWeek]) {
 
-  	time_t startTime = now - currMinuteOfDay*60 + n*24*60*60 + startMinuteOfDay*60 - currSecond;
-  	struct tm *timeinfo = localtime(&startTime);
-  	strftime (nextTimeToRun,18,"%D %T",timeinfo);
-  	return;
-        }
+	// Skip checking this day if we're not scheduled to run
+        if (! runDays[dayOfWeek]) continue;
+
+        //check each startTime
+	for (int i = 0; i < int(startTimesOfDay.size()); i++) {
+	  // if it's today but the time we're looking it was before now, skip it
+	  if ( (dayOfWeek == currWeekDay) && (startTimesOfDay[i] < currMinuteOfDay) ) continue;
+	  // if we found a start time already and this is bigger, skip it
+	  if ( timeFound && startTimesOfDay[i] > timeFound ) continue;
+
+	  timeFound = startTimesOfDay[i];
+	}
+	
+	if ( timeFound ) {
+	  time_t startTime = now - currMinuteOfDay*60 + n*24*60*60 + timeFound*60 - currSecond;
+	  struct tm *timeinfo = localtime(&startTime);
+	  strftime (nextTimeToRun,18,"%D %T",timeinfo);
+	  return;
+	} 
       }
-
-      strcpy(nextTimeToRun,"No days set");
     }
 
   public:
     int runTime = 0;
-    int startMinuteOfDay = 0;
     char timeLeftToRun[12];
     char nextTimeToRun[18];
     Array<int,7> runDays;
+    Array<int,4> startTimesOfDay;
 
     //constructurs
     TimerRelay(int a): Relay(a) {
@@ -278,12 +298,11 @@ class TimerRelay: public Relay {
       runTime = a;
     }
 
-    void setScheduleOverride(bool a) {
-      scheduleOverride = a;
-    }
-    
     void setStartTime(int a, int b) {
-      startMinuteOfDay = a * 60 + b;
+      int startMinuteOfDay = a * 60 + b;
+      if ( ! startTimesOfDay.full() ) {
+	startTimesOfDay.push_back(startMinuteOfDay);
+      }
     }
 
    void setEveryOtherDayOn() {
@@ -328,7 +347,12 @@ class TimerRelay: public Relay {
      int currMinute = timeinfo->tm_min;
      int weekDay = timeinfo->tm_wday;
 
-     return runDays[weekDay] && (((currHour * 60) + currMinute) == startMinuteOfDay);
+     for (int i=0; i<START_TIME_ELEMENT_COUNT; i++) {
+       if (runDays[weekDay] && (((currHour * 60) + currMinute) == startTimesOfDay[i]) ) {
+	 return true;
+       } 
+     }
+     return false;
    }
 
    bool isTimeToStop() {
@@ -345,23 +369,26 @@ class TimerRelay: public Relay {
        setNextTimeToRun();
      }
 
-     if ( ( now == prevTime ) || ( now % 60 != 10 ) ) return false;
+     if ( ( now == prevTime ) || ( now % 60 != 0 ) ) return false;
      
      // if we don't have runtime set, then just return
      if ( runTime == 0 ) return false;
+
+      // if we're on, turn it off if it's been more than than the time to run or if it's started raining
+      // if the scheduleOverride is on, turn it off if the timer expires and resume normal
+      // operation
+     if ( on && isTimeToStop() ) {
+       switchOff();
+       return true;
+     }
+
      if ( scheduleOverride ) return false;
 
      // if we're not on, turn it on if it's the right day and time
      if ( !on && isTimeToStart() ) {
-       switchOn();
+       internalOn();
        return true;
      } 
-
-     // if we're on, turn it off if it's been more than than the time to run 
-     if ( on && isTimeToStop() ) {
-	 switchOff();
-	 return true;
-       }
 
      return false;
    }
@@ -457,28 +484,32 @@ class IrrigationRelay: public TimerRelay {
 
       // if we don't have runtime set, then just return
       if ( runTime == 0 ) return false;
+
+      // if we're on, turn it off if it's been more than than the time to run or if it's started raining
+      // if the scheduleOverride is on, turn it off if the timer expires and resume normal
+      // operation
+      if ( on && isTimeToStop() ) {
+	switchOff();
+	return true;
+      }
+
       if ( scheduleOverride ) return false;
+
+      // if we're on it started raining, turn it off
+      // but ignore the scheduleOvveride and stay running if it's set
+      if ( on && !soilDry ) {
+	internalOff();
+	return true;
+      }
 
       // if we're not on, turn it on if it's the right day and time
       if ( !on && isTimeToStart() ) {
 	if ( ! soilDry ) {
 	  return false;
 	}
-	switchOn();
+	internalOn();
 	return true;
       } 
-
-      // if we're on, turn it off if it's been more than than the time to run or if it's started raining
-      if ( on && isTimeToStop() ) {
-	switchOff();
-	return true;
-      }
-
-      // if we're on it started raining, turn it off
-      if ( on && !soilDry ) {
-	switchOff();
-	return true;
-      }
 
       return false;
     }
@@ -533,12 +564,12 @@ class ScheduleRelay: public Relay {
      int currHour = timeinfo->tm_hour;
      int currMinute = timeinfo->tm_min;
      if ( ! on && findTime(currHour, currMinute, onTimes) ) {
-       switchOn();
+       internalOn();
        return true;
      }
 
      if ( on && findTime(currHour, currMinute, offTimes) ) {
-       switchOff();
+       internalOff();
        return true;
      }
 
@@ -601,7 +632,7 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
        timesDark++;
 
        if (timesDark > timesToSample) {
-	 switchOn();
+	 internalOn();
 	 return true;
        }
      }
@@ -612,7 +643,7 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
        timesLight++;
 
        if (timesLight > timesToSample) {
-	 switchOff();
+	 internalOff();
 	 return true;
        }
      }
