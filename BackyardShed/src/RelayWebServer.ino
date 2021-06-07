@@ -95,6 +95,20 @@ void setup() {
   // Soil Moisture Sensor addresses: 0x48, 0x49, 0x4a, 0x4b
   //TODO: add starttimes to status
 
+  // zone1 startTimes: 7:00, 11:00, 15:00, 19:00
+  const char *zoneNames[2] = { "patio_pots", "cottage" };
+  syslog.logf(LOG_INFO, "first zone: %s", zoneNames[0]);
+  int StartTimes[8][5]  
+  { 
+    // patio_pots
+    {  7, 11, 15, 19 }, // hour
+    {  0,  0,  0,  0 }, // minute
+    // cottage
+    {  7, 15 },         // hour
+    { 30, 30 }          // minute
+  };
+
+
   // Pots and Plants Irrigation
   IrrigationRelay * irz1 = new IrrigationRelay(7, &mcp);
   irz1->setBackwards();
@@ -120,12 +134,13 @@ void setup() {
   syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
   IrrigationZones.push_back(irz2);
 
-  // Zone3
+  // South Fence
   IrrigationRelay * irz3 = new IrrigationRelay(5, &mcp);
   irz3->setBackwards();
   irz3->setup("south_fence");
   irz3->setRuntime(5);
-  irz3->setStartTime(7,10); // hour, minute
+  //irz3->setStartTime("7:10", "11:10", "15:10", "19:10"); 
+  irz3->setStartTime(7,10); // hour, minut
   irz3->setStartTime(11,10); // hour, minute
   irz3->setStartTime(15,10); // hour, minute
   irz3->setStartTime(19,10); // hour, minute
@@ -134,7 +149,7 @@ void setup() {
   syslog.logf(LOG_INFO, "irrigation Zone 3 %s setup done", irz3->name); 
   IrrigationZones.push_back(irz3);
 
-  // Zone4
+  // Hill
   IrrigationRelay * irz4 = new IrrigationRelay(4, &mcp);
   irz4->setBackwards();
   irz4->setup("hill");
@@ -146,28 +161,39 @@ void setup() {
   syslog.logf(LOG_INFO, "irrigation Zone 4 %s setup done", irz4->name); 
   IrrigationZones.push_back(irz4);
 
-  // Zone5
+  // Garden
   IrrigationRelay * irz5 = new IrrigationRelay(3, &mcp);
   irz5->setBackwards();
-  irz5->setup("zone5");
+  irz5->setup("garden");
+  irz5->setStartTime(6,0); // hour, minute
+  irz5->setStartTime(10,0); // hour, minute
+  irz5->setStartTime(14,0); // hour, minute
+  irz5->setStartTime(18,0); // hour, minute
+  irz5->setRuntime(8);
 //  irz5->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
 //  irz5->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 5 %s setup done", irz5->name); 
   IrrigationZones.push_back(irz5);
 
-  // Zone6
+  // Back fence
   IrrigationRelay * irz6 = new IrrigationRelay(2, &mcp);
   irz6->setBackwards();
-  irz6->setup("zone6");
+  irz6->setup("back_fence");
+  irz6->setStartTime(9,0); // hour, minute
+  irz6->setStartTime(19,0); // hour, minute
+  irz6->setRuntime(15);
 //  irz6->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
 //  irz6->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 6 %s setup done", irz6->name); 
   IrrigationZones.push_back(irz6);
 
-  // Zone7
+  // North Fence
   IrrigationRelay * irz7 = new IrrigationRelay(1, &mcp);
   irz7->setBackwards();
-  irz7->setup("zone7");
+  irz7->setup("north_fence");
+  irz7->setStartTime(9,20); // hour, minute
+  irz7->setStartTime(19,20); // hour, minute
+  irz7->setRuntime(15);
 //  irz7->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
 //  irz7->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 7 %s setup done", irz7->name); 
@@ -184,9 +210,11 @@ void setup() {
 
   // Start the server
   server.on("/debug", handleDebug);
-  server.on("/status", handleStatus);
   server.on("/irrigation", handleIrrigation);
   server.on("/zones", handleZones);
+  server.on("/door", handleDoor);
+  server.on("/sensors", handleSensors);
+  server.on("/status", handleStatus);
 
   server.begin();
 }
@@ -226,6 +254,24 @@ void handleZones() {
     }
   }
   server.send(200, "text/plain", zones);
+}
+
+void handleDoor() {
+  if (server.arg("state") == "status") {
+    server.send(200, "text/plain", shedDoor->status() ? "1" : "0");
+    return;
+  } 
+  server.send(404, "text/plain", "ERROR: uknonwn state command");
+}
+
+void handleSensors() {
+  if (server.arg("sensor") == "light") {
+    char msg[10];
+    sprintf(msg, "%d", veml.readLux());
+    server.send(200, "text/plain", msg);
+  } else if (server.arg("sensor") == "door") {
+    server.send(200, "text/plain", shedDoor->status() ? "1" : "0");
+  }
 }
 
 void handleStatus() {

@@ -4,7 +4,7 @@
 #include <Syslog.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
-#include <Array.h>
+#include <Vector.h>
 
 #include <my_relay.h>
 
@@ -17,7 +17,7 @@
 
 // This device info
 #define APP_NAME "switch"
-#define JSON_SIZE 300
+#define JSON_SIZE 1000
 
 ESP8266WebServer server(80);
 
@@ -35,7 +35,8 @@ const int RX_PIN=3;
 const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
 
-TimerRelay * lightSwitch = new TimerRelay(TX_PIN);
+Vector<TimerRelay*> TimerSwitches;
+TimerRelay * storage_array[8];
 
 void setup() {
   Serial.begin(115200);
@@ -62,12 +63,57 @@ void setup() {
   configTime(MYTZ, "pool.ntp.org");
 
   // Setup the Relay
-  lightSwitch->setup("lightswitch");
-  lightSwitch->setRuntime(5);
-  lightSwitch->setStartTime(23,25); // hour, minute
-  lightSwitch->setStartTime(21,21); // hour, minute
-  lightSwitch->setStartTime(22,54); // hour, minute
-  lightSwitch->setStartTime(8,10); // hour, minute
+  TimerSwitches.setStorage(storage_array);
+
+  const int SWITCH_COUNT = 2;
+  const int MAX_START_TIMES = 5;
+  const char *switchNames[SWITCH_COUNT] = { "test1", "test2" };
+  int StartTimes[8][5]  
+  { 
+    // patio_pots
+    {  7, 11, 15, 19, -1 }, // hour
+    {  0,  0,  0,  0, -1 }, // minute
+    // cottage
+    {  7, 15, -1, -1, -1 },         // hour
+    { 30, 30, -1, -1, -1 }          // minute
+  };
+
+  struct TimerConfig {
+    TimerConfig(String a, int b): name(a), runTime(b) {}
+    TimerConfig() {}
+
+    String name;
+    int runTime;
+    int hours[MAX_START_TIMES];
+    int minutes[MAX_START_TIMES];
+  };
+
+
+  TimerConfig* switchConfigs[2];
+  switchConfigs[0] = &TimerConfig("patio_pots", 5);
+  switchConfigs[1] = &TimerConfig("cottage", 15);
+
+  switchConfigs[0]->hours =  {  7, 11, 15, 19, -1 };
+  (switchConfigs[0]).minutes[] = {  0,  0,  0,  0, -1 };
+  (switchConfigs[1]).hours[] =   {  7, 15, -1, -1, -1 };
+  (switchConfigs[1]).minutes[] = { 30, 30, -1, -1, -1 };
+
+  for (int n = 0; n < SWITCH_COUNT; n++) {
+    TimerRelay * lightSwitch = new TimerRelay(TX_PIN);
+    //lightSwitch->setup(switchNames[n]);
+    lightSwitch->setup(switchConfigs[n].name);
+
+    for (int m = 0; m < MAX_START_TIMES; m++) {
+      //int hour = startTimtes[n*2][m];
+      //int minute = startTimtes[n*2+1][m];
+      int hour = switchConfigs[n].hours[m];
+      int minute = switchConfigs[n].minutes[m];
+      if ( hour != -1 ) lightSwitch->setStartTime(hour, minute);
+    }
+
+
+    TimerSwitches.push_back(lightSwitch);
+  }
 
   // Start the server
   server.on("/debug", handleDebug);
@@ -104,11 +150,13 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
 
-  switches["light"]["state"] = lightSwitch->state();
-  switches["light"]["override"] = lightSwitch->scheduleOverride;
-  switches["light"]["Time Left"] = lightSwitch->timeLeftToRun;
-  switches["light"]["Last Run Time"] = lightSwitch->prettyOnTime;
-  switches["light"]["Next Run Time"] = lightSwitch->nextTimeToRun;
+  for (TimerRelay * lightSwitch : TimerSwitches) {
+    switches[lightSwitch->name]["state"] = lightSwitch->state();
+    switches[lightSwitch->name]["override"] = lightSwitch->scheduleOverride;
+    switches[lightSwitch->name]["Time Left"] = lightSwitch->timeLeftToRun;
+    switches[lightSwitch->name]["Last Run Time"] = lightSwitch->prettyOnTime;
+    switches[lightSwitch->name]["Next Run Time"] = lightSwitch->nextTimeToRun;
+  }
   doc["debug"] = debug;
 
   char timeString[20];
@@ -130,14 +178,14 @@ void handleStatus() {
 
 void handleLight() {
   if (server.arg("state") == "status") {
-    server.send(200, "text/plain", lightSwitch->on ? "1" : "0");
+    server.send(200, "text/plain", (TimerSwitches[0])->on ? "1" : "0");
   } else if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch->onTime);
-    lightSwitch->switchOn();
+    syslog.logf(LOG_INFO, "Turning light on at %ld", (TimerSwitches[0])->onTime);
+    (TimerSwitches[0])->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch->offTime);
-    lightSwitch->switchOff();
+    syslog.logf(LOG_INFO, "Turning light off at %ld", (TimerSwitches[0])->offTime);
+    (TimerSwitches[0])->switchOff();
     server.send(200, "text/plain");
   } else {
     server.send(404, "text/plain", "ERROR: uknonwn light command");
@@ -151,8 +199,8 @@ void loop() {
 
   time_t now = time(nullptr);
   if ( now != prevTime ) {
-    if ( lightSwitch->handle() ) {
-      syslog.logf(LOG_INFO, "%s %s", lightSwitch->name, lightSwitch->state());
+    if ( (TimerSwitches[0])->handle() ) {
+      syslog.logf(LOG_INFO, "%s %s", (TimerSwitches[0])->name, (TimerSwitches[0])->state());
     }
   }
   prevTime = now;
