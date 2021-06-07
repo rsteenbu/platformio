@@ -222,7 +222,6 @@ class GarageDoorRelay: public Relay {
 };
 
 class TimerRelay: public Relay {
-  const int START_TIME_ELEMENT_COUNT = 5;
 
   protected:
     time_t now, prevTime = 0;
@@ -284,7 +283,7 @@ class TimerRelay: public Relay {
     char timeLeftToRun[12];
     char nextTimeToRun[18];
     Array<int,7> runDays;
-    Array<int,4> startTimesOfDay;
+    Array<int,5> startTimesOfDay;
 
     //constructurs
     TimerRelay(int a): Relay(a) {
@@ -296,6 +295,26 @@ class TimerRelay: public Relay {
 
     void setRuntime(int a) {
       runTime = a;
+    }
+
+    void setStartTimes(char *a) {
+      bool processMinutes = false;
+      char hours[2];
+      char minutes[2];
+      int n = 0;
+      for (int i = 0; a[i] != '\0'; i++){
+	if (! processMinutes) {
+	  hours[n++] = a[i];
+
+	  if (a[i] == ':') {
+	    processMinutes = true;
+	    n = 0;
+	    continue;
+	  }
+	} else {
+	  minutes[n++] = a[i];
+	}
+      }
     }
 
     void setStartTime(int a, int b) {
@@ -347,7 +366,7 @@ class TimerRelay: public Relay {
      int currMinute = timeinfo->tm_min;
      int weekDay = timeinfo->tm_wday;
 
-     for (int i=0; i<START_TIME_ELEMENT_COUNT; i++) {
+     for (int i = 0; i < int(startTimesOfDay.size()); i++) {
        if (runDays[weekDay] && (((currHour * 60) + currMinute) == startTimesOfDay[i]) ) {
 	 return true;
        } 

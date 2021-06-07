@@ -25,7 +25,7 @@ ESP8266WebServer server(80);
 
 // This device info
 #define MYTZ TZ_America_Los_Angeles
-#define JSON_SIZE 500
+#define JSON_SIZE 1000
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
@@ -59,7 +59,6 @@ DeviceAddress frontyardThermometer;
 DuskToDawnScheduleRelay * lvLights = new DuskToDawnScheduleRelay(D4);
 IrrigationRelay * irrigation = new IrrigationRelay(D5);
 
-int16_t lightLevel = 0;
 float temperature = 0;
 bool displayOn = true;
 
