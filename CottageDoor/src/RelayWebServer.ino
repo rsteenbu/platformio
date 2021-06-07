@@ -25,7 +25,7 @@ ESP8266WebServer server(80);
 WiFiUDP udpClient;
 
 // Create a new syslog instance with LOG_LOCAL0 facility
-Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+yslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 // ESP-01 Pins
 const int TX_PIN=1;
