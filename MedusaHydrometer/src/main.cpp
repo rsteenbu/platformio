@@ -14,6 +14,7 @@
 
 #include <Wire.h>
 #include <my_lcd.h>
+#include <my_pir.h>
 
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
@@ -29,22 +30,23 @@ ESP8266WebServer server(80);
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 
-
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 #define DHTLEFTPIN D5            // Digital pin connected to the DHT sensor
 #define DHTRIGHTPIN D6            // Digital pin connected to the DHT sensor
 #define DHTTYPE    DHT22     // DHT 22 (AM2302)
-
-DHT_Unified dhtLeft(DHTLEFTPIN, DHTTYPE);
+DHT_Unified dhtLeft(D5, DHTTYPE);
 DHT_Unified dhtRight(DHTRIGHTPIN, DHTTYPE);
 
 int debug = 0;
-
 char msg[40];
+LCD * lcd = new LCD();
+PIR * pir = new PIR(D7); 
 
-LCD * lcd = new LCD();;
+int const PIR_PIN = D2;  //yellow
+int pirState = LOW;  //start with no motion detected
+bool sensorActive = true;
 
 void handleDebug() {
   if (server.arg("level") == "status") {
@@ -156,6 +158,16 @@ void loop() {
 
   prevTime = now;
   now = time(nullptr);
+  pir->handle();
+  if (pir->activity() && ! lcd->state) {
+    lcd->setBackLight(true);
+    syslog.log(LOG_INFO, "Person detected, turningg backlight on");
+  } 
+  if (!pir->activity() && lcd->state) {
+    lcd->setBackLight(false);
+    syslog.log(LOG_INFO, "Nobody detected, turningg backlight off");
+  }
+
   if ( ( now != prevTime ) && ( now % 5 == 0 ) ) {
 
     sensors_event_t event;
@@ -182,14 +194,4 @@ void loop() {
   }
 
 
-/*
-  if ( displayState != displayOnCommand ) {
-    if (displayOnCommand) {
-      lcd->backlight();
-    } else {
-      lcd->noBacklight();
-    }
-    displayState = displayOnCommand;
-  }
-  */
 }
