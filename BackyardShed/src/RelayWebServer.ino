@@ -115,9 +115,7 @@ void setup() {
   irz1->setup("patio_pots");
   irz1->setRuntime(5);
   irz1->setStartTime(7,0); // hour, minute
-  irz1->setStartTime(11,0); // hour, minute
   irz1->setStartTime(15,0); // hour, minute
-  irz1->setStartTime(19,0); // hour, minute
 //  irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
 //  irz1->setSoilMoistureLimits(660, 218); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 1 %s setup done", irz1->name);
@@ -181,7 +179,7 @@ void setup() {
   irz6->setup("back_fence");
   irz6->setStartTime(9,0); // hour, minute
   irz6->setStartTime(19,0); // hour, minute
-  irz6->setRuntime(15);
+  irz6->setRuntime(20);
 //  irz6->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
 //  irz6->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 6 %s setup done", irz6->name); 
