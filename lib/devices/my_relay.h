@@ -7,7 +7,7 @@
 #include <TZ.h>
 #include <Array.h>
 #include <Wire.h>
-#include "Adafruit_MCP23017.h"
+#include "Adafruit_MCP23X17.h"
 #include <SPI.h>
 #include <Adafruit_ADS1X15.h>
 #include <my_veml.h>
@@ -16,7 +16,7 @@ class Relay {
   int pin;
   int onVal = HIGH;
   int offVal = LOW;
-  Adafruit_MCP23017* mcp;
+  Adafruit_MCP23X17* mcp;
   bool i2cPins = false;
 
   protected:
@@ -52,7 +52,7 @@ class Relay {
 
     //constructors
     Relay (int a): pin(a) {}
-    Relay (int a, Adafruit_MCP23017* b) {
+    Relay (int a, Adafruit_MCP23X17* b) {
       pin = a;
       mcp = b;
       i2cPins = true;
@@ -280,7 +280,7 @@ class TimerRelay: public Relay {
 
   public:
     int runTime = 0;
-    char timeLeftToRun[12];
+    char timeLeftToRun[14];
     char nextTimeToRun[18];
     Array<int,7> runDays;
     Array<int,5> startTimesOfDay;
@@ -289,7 +289,7 @@ class TimerRelay: public Relay {
     TimerRelay(int a): Relay(a) {
       setEveryDayOn();
     }
-    TimerRelay (int a, Adafruit_MCP23017* b): Relay(a, b) {
+    TimerRelay (int a, Adafruit_MCP23X17* b): Relay(a, b) {
       setEveryDayOn();
     }
 
@@ -297,7 +297,9 @@ class TimerRelay: public Relay {
       runTime = a;
     }
 
-    void setStartTimes(char *a) {
+    void setStartTimeFromString(char *a) {
+      if (  startTimesOfDay.full() ) { return; }
+
       bool processMinutes = false;
       char hours[2];
       char minutes[2];
@@ -315,6 +317,8 @@ class TimerRelay: public Relay {
 	  minutes[n++] = a[i];
 	}
       }
+      int startMinuteOfDay = atoi(hours) * 60 + atoi(minutes);
+      startTimesOfDay.push_back(startMinuteOfDay);
     }
 
     void setStartTime(int a, int b) {
@@ -432,7 +436,7 @@ class IrrigationRelay: public TimerRelay {
 
     //constructors
     IrrigationRelay (int a): TimerRelay(a) { }
-    IrrigationRelay (int a, Adafruit_MCP23017* b): TimerRelay(a, b) { }
+    IrrigationRelay (int a, Adafruit_MCP23X17* b): TimerRelay(a, b) { }
 
     // turn on the soilMoisture check at soilMoisturePercentageToRun
     void setSoilMoistureSensor(int a, int b) {

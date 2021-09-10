@@ -20,6 +20,7 @@
 #include <DallasTemperature.h>
 
 #include <my_relay.h>
+#include <my_pir.h>
 
 ESP8266WebServer server(80);
 
@@ -45,11 +46,7 @@ int debug = 0;
 char msg[40];
 
 int const SOIL_PIN = A0;
-int const PIR_PIN = D6;
 int const ONEWIRE_PIN = D7;
-
-// MotionSensor setup
-int pirState = LOW;  //start with no motion detected
 
 // Thermometer Dallas OneWire
 OneWire ds(ONEWIRE_PIN);  // on pin D7 (a 4.7K resistor is necessary)
@@ -59,6 +56,8 @@ DeviceAddress frontyardThermometer;
 DuskToDawnScheduleRelay * lvLights = new DuskToDawnScheduleRelay(D4);
 IrrigationRelay * irrigation = new IrrigationRelay(D5);
 
+PIR * motionsensor = new PIR(D6);
+
 float temperature = 0;
 bool displayOn = true;
 
@@ -67,7 +66,7 @@ void setup() {
   Serial.println("Booting up");
 
   // prepare the motion sensor
-  pinMode(PIR_PIN, INPUT);
+  motionsensor->setup();
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -163,11 +162,11 @@ void handleDebug() {
 
 void handleLight() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %ld", lvLights->onTime);
+    syslog.logf(LOG_INFO, "Turning light on at %lld", lvLights->onTime);
     lvLights->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %ld", lvLights->offTime);
+    syslog.logf(LOG_INFO, "Turning light off at %lld", lvLights->offTime);
     lvLights->switchOff();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
@@ -189,11 +188,11 @@ void handleLight() {
 
 void handleIrrigation() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning irrigation on at %ld", irrigation->onTime);
+    syslog.logf(LOG_INFO, "Turning irrigation on at %lld", irrigation->onTime);
     irrigation->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning irrigation off at %ld", irrigation->offTime);
+    syslog.logf(LOG_INFO, "Turning irrigation off at %lld", irrigation->offTime);
     irrigation->switchOff();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
@@ -290,27 +289,22 @@ void loop() {
   now = time(nullptr);
   if ( ( now != prevTime ) && ( now % 5 == 0 ) ) {
      temperature = getTemperature();
+     motionsensor->handle();
      updateDisplay();
   }
 }
 
 void updateDisplay() {
     syslog.appName(MOTION_APPNAME);
-    int pirVal = digitalRead(PIR_PIN);  // read input value from the motion sensor
-    if (pirVal == HIGH) {            // check if the input is HIGH
-      if (pirState == LOW) {
-	// we have just turned on
-	syslog.log(LOG_INFO, "Person detected, turning display on");
-	display.ssd1306_command(SSD1306_DISPLAYON);
-	displayOn = true;
-      }
-    } else {
-      if (pirState == HIGH){
-	syslog.log(LOG_INFO, "Nobody detected, turning display off");
-	display.ssd1306_command(SSD1306_DISPLAYOFF);
-	pirState = LOW;
-	displayOn = false;
-      }
+    if (motionsensor->activity() && !displayOn) {            // check if the input is HIGH
+      syslog.log(LOG_INFO, "Person detected, turning display on");
+      display.ssd1306_command(SSD1306_DISPLAYON);
+      displayOn = true;
+    }
+    if (!motionsensor->activity() && displayOn) {
+      syslog.log(LOG_INFO, "Nobody detected, turning display off");
+      display.ssd1306_command(SSD1306_DISPLAYOFF);
+      displayOn = false;
     }
 
     if (displayOn) {
@@ -332,7 +326,6 @@ void updateDisplay() {
       display.printf("Temperature: %2.2f", temperature);
       display.println();
       display.display();
-      pirState = HIGH;
    }
 }
 
