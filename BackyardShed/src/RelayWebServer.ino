@@ -9,7 +9,7 @@
 
 #include <Vector.h>
 #include <Wire.h>
-#include "Adafruit_MCP23017.h"
+#include "Adafruit_MCP23X17.h"
 
 #include <my_relay.h>
 #include <my_reed.h>
@@ -47,7 +47,7 @@ int debug = 0;
 
 StaticJsonDocument<200> doc;
 
-Adafruit_MCP23017 mcp;
+Adafruit_MCP23X17 mcp;
 Vector<IrrigationRelay*> IrrigationZones;
 
 IrrigationRelay * storage_array[8];
@@ -81,7 +81,6 @@ void setup() {
   // set I2C pins (SDA, SDL)
   //Wire.begin(GPIO2_PIN, GPIO0_PIN);
   Wire.begin(GPIO0_PIN, GPIO2_PIN);
-  mcp.begin();      // use default address 0
 
   if ( ! veml.setup() ) {
     syslog.log(LOG_INFO, "ERROR: veml setup failed");
@@ -98,16 +97,6 @@ void setup() {
   // zone1 startTimes: 7:00, 11:00, 15:00, 19:00
   const char *zoneNames[2] = { "patio_pots", "cottage" };
   syslog.logf(LOG_INFO, "first zone: %s", zoneNames[0]);
-  int StartTimes[8][5]  
-  { 
-    // patio_pots
-    {  7, 11, 15, 19 }, // hour
-    {  0,  0,  0,  0 }, // minute
-    // cottage
-    {  7, 15 },         // hour
-    { 30, 30 }          // minute
-  };
-
 
   // Pots and Plants Irrigation
   IrrigationRelay * irz1 = new IrrigationRelay(7, &mcp);
@@ -349,12 +338,12 @@ void handleIrrigation() {
 	server.send(200, "text/plain", relay->status() ? "1" : "0");
 	return;
       } else if (server.arg("state") == "on") {
-	syslog.logf(LOG_INFO, "Turning irrigation zone %s on by API request at %ld", relay->name, relay->onTime);
+	syslog.logf(LOG_INFO, "Turning irrigation zone %s on by API request at %lld", relay->name, relay->onTime);
 	relay->switchOn();
 	server.send(200, "text/plain");
 	return;
       } else if (server.arg("state") == "off") {
-	syslog.logf(LOG_INFO, "Turning irrigation zone %s off by API request at %ld", relay->name, relay->onTime);
+	syslog.logf(LOG_INFO, "Turning irrigation zone %s off by API request at %lld", relay->name, relay->onTime);
 	relay->switchOff();
 	server.send(200, "text/plain");
 	return;

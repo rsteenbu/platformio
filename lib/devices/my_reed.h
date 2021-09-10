@@ -1,11 +1,11 @@
 #ifndef REED_H
 #define REED_H
 #include <Wire.h>
-#include "Adafruit_MCP23017.h"
+#include "Adafruit_MCP23X17.h"
 
 class ReedSwitch {
   int pin;
-  Adafruit_MCP23017* mcp;
+  Adafruit_MCP23X17* mcp;
   bool i2cPins = false;
   const int DOOR_OPEN = 1;
   const int DOOR_CLOSED = 1;
@@ -20,7 +20,7 @@ class ReedSwitch {
     ReedSwitch(int a) {
       pin = a;
     }
-    ReedSwitch(int a, Adafruit_MCP23017* b) {
+    ReedSwitch(int a, Adafruit_MCP23X17* b) {
       pin = a;
       mcp = b;
       i2cPins = true;
@@ -30,12 +30,7 @@ class ReedSwitch {
       name = new char[strlen(a)+1];
       strcpy(name,a);
 
-      if (i2cPins) {
-	(*mcp).pinMode(pin, INPUT);
-	(*mcp).pullUp(pin, HIGH);
-      } else {
-	pinMode(pin, INPUT_PULLUP);
-      }
+      pinMode(pin, INPUT_PULLUP);
     }
 
     const char* state() {

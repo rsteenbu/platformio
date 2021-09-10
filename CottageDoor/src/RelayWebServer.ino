@@ -25,7 +25,7 @@ ESP8266WebServer server(80);
 WiFiUDP udpClient;
 
 // Create a new syslog instance with LOG_LOCAL0 facility
-yslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 // ESP-01 Pins
 const int TX_PIN=1;
@@ -138,11 +138,11 @@ void handleRelay() {
   if (server.arg("state") == "status") {
     server.send(200, "text/plain", lightSwitch->on ? "1" : "0");
   } else if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %ld", lightSwitch->onTime);
+    syslog.logf(LOG_INFO, "Turning light on at %lld", lightSwitch->onTime);
     lightSwitch->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %ld", lightSwitch->offTime);
+    syslog.logf(LOG_INFO, "Turning light off at %lld", lightSwitch->offTime);
     lightSwitch->switchOff();
     server.send(200, "text/plain");
   } else {
