@@ -15,6 +15,7 @@
 #include <Wire.h>
 #include <my_lcd.h>
 #include <my_pir.h>
+#include <my_relay.h>
 
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
@@ -22,7 +23,7 @@
 
 // Syslog server connection info
 #define APP_NAME "base"
-#define JSON_SIZE 200
+#define JSON_SIZE 600
 #define MYTZ TZ_America_Los_Angeles
 
 ESP8266WebServer server(80);
@@ -41,8 +42,13 @@ DHT_Unified dhtRight(DHTRIGHTPIN, DHTTYPE);
 
 int debug = 0;
 char msg[40];
+double leftHumidity;
+double rightHumidity;
+double leftTemp;
+double rightTemp;
 LCD * lcd = new LCD();
 PIR * pir = new PIR(D7); 
+TimerRelay * Mister = new TimerRelay(D3);
 
 int const PIR_PIN = D2;  //yellow
 int pirState = LOW;  //start with no motion detected
@@ -70,6 +76,28 @@ void handleDebug() {
   }
 }
 
+void handleMister() {
+  if (server.arg("state") == "on") {
+    Mister->switchOn();
+    syslog.logf(LOG_INFO, "Turning %s on for %ds", Mister->name, Mister->runTime);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    Mister->switchOff();
+    syslog.logf(LOG_INFO, "Turning %s off", Mister->name);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "status") {
+    server.send(200, "text/plain", Mister->on ? "1" : "0");
+  } else if (server.arg("addTime") != "") {
+    int timeToAdd = server.arg("addTime").toInt();
+    Mister->addTimeToRun(timeToAdd);
+    syslog.logf(LOG_INFO, "Added %d seconds, total runtime now %ds, time left %ds", timeToAdd, Mister->getSecondsLeft(), Mister->runTime);
+    server.send(200, "text/plain");
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown mister command");
+  }
+}
+
+
 void handleDisplay() {
   if (server.arg("state") == "on") {
     syslog.log(LOG_INFO, "Turning on LCD Display");
@@ -88,6 +116,15 @@ void handleStatus() {
   time_t now;
   now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
+  JsonObject switches = doc.createNestedObject("switches");
+
+  switches["mister"]["state"] = Mister->state();
+  switches["mister"]["Time Left"] = Mister->timeLeftToRun;
+  JsonObject sensors = doc.createNestedObject("sensors");
+  sensors["left"]["humidity"] = leftHumidity;
+  sensors["left"]["temperature"] = leftTemp;
+  sensors["right humidity"] = rightHumidity;
+  sensors["right"]["temperature"] = rightTemp;
 
   doc["LCD Backlight Status"] = lcd->state;
   doc["debug"] = debug;
@@ -110,11 +147,15 @@ void handleStatus() {
 }
 
 void setup() {
+  Serial.begin(9600);
+  Serial.println("Booting up");
+
+  // Setup the Relay
+  Mister->setup("misting_system");
+  Mister->setRuntimeInSeconds(10);
+
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);
-
-  Serial.begin(115200);
-  Serial.println("Booting up");
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -138,6 +179,7 @@ void setup() {
   // Start the server
   // Start the server
   server.on("/debug", handleDebug);
+  server.on("/mister", handleMister);
   server.on("/status", handleStatus);
   server.on("/display", handleDisplay);
   server.begin();
@@ -161,34 +203,39 @@ void loop() {
   pir->handle();
   if (pir->activity() && ! lcd->state) {
     lcd->setBackLight(true);
-    syslog.log(LOG_INFO, "Person detected, turningg backlight on");
+    syslog.log(LOG_INFO, "Person detected, turning backlight on");
   } 
   if (!pir->activity() && lcd->state) {
     lcd->setBackLight(false);
-    syslog.log(LOG_INFO, "Nobody detected, turningg backlight off");
+    syslog.log(LOG_INFO, "Nobody detected, turning backlight off");
   }
 
-  if ( ( now != prevTime ) && ( now % 5 == 0 ) ) {
+  Mister->handle();
+  if ( now != prevTime ) {
 
     sensors_event_t event;
 
     // Row 1, Humdity 
+    char row1[17];
     dhtLeft.humidity().getEvent(&event);
-    double leftHumidity = event.relative_humidity;
+    leftHumidity = event.relative_humidity;
     dhtRight.humidity().getEvent(&event);
-    double rightHumidity = event.relative_humidity;
-    char row1[16];
-    sprintf(row1, "H: %5.2f%%%6.2f%%", leftHumidity, rightHumidity);
+    rightHumidity = event.relative_humidity;
+    sprintf(row1, "H: %4.2f%% %5.2f%%", leftHumidity, rightHumidity);
     lcd->setCursor(0, 0);
     lcd->print(row1);
 
-    // Row 2, Temperature
-    dhtLeft.temperature().getEvent(&event);
-    double leftTemp = event.temperature * 9 / 5 + 32;
-    dhtRight.temperature().getEvent(&event);
-    double rightTemp = event.temperature * 9 / 5 + 32;
-    char row2[16];
-    sprintf(row2, "T: %5.2f%7.2f", leftTemp, rightTemp);
+    char row2[17];
+    if ( Mister->status() ) {
+      sprintf(row2, "Time left: %s", Mister->timeLeftToRun); 
+    } else {
+      // Row 2, Temperature
+      dhtLeft.temperature().getEvent(&event);
+      leftTemp = event.temperature * 9 / 5 + 32;
+      dhtRight.temperature().getEvent(&event);
+      rightTemp = event.temperature * 9 / 5 + 32;
+      sprintf(row2, "T: %5.2f%7.2f ", leftTemp, rightTemp);
+    }
     lcd->setCursor(0, 1);
     lcd->print(row2);
   }

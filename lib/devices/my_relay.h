@@ -225,17 +225,20 @@ class TimerRelay: public Relay {
 
   protected:
     time_t now, prevTime = 0;
+    int minutes = 0, seconds = 0;
+    int secondsLeft = 0;
+    int initialRunTime;
 
     void setTimeLeftToRun() {
-      if ( ! on ) { 
-        strcpy(timeLeftToRun, "Not running");
+      if ( on ) { 
+        secondsLeft = runTime - (now - onTime);
+        minutes = secondsLeft / 60;
+        seconds = secondsLeft % 60;
       } else {
-        int secondsLeft = (runTime * 60) - (now - onTime);
-        int minutes = secondsLeft / 60;
-        int seconds = secondsLeft % 60;
-  
-        sprintf(timeLeftToRun, "%d:%02d", minutes, seconds);
+        minutes = 0;
+	seconds = 0;
       }
+      sprintf(timeLeftToRun, "%2d:%02d", minutes, seconds);
     }
 
     void setNextTimeToRun() {
@@ -280,7 +283,7 @@ class TimerRelay: public Relay {
 
   public:
     int runTime = 0;
-    char timeLeftToRun[14];
+    char timeLeftToRun[6];
     char nextTimeToRun[18];
     Array<int,7> runDays;
     Array<int,5> startTimesOfDay;
@@ -293,9 +296,39 @@ class TimerRelay: public Relay {
       setEveryDayOn();
     }
 
-    void setRuntime(int a) {
-      runTime = a;
+    void setRuntimeInSeconds(int a) {
+      initialRunTime = a;
     }
+
+    void setRuntimeInMinutes(int a) {
+      initialRunTime = a * 60;
+    }
+
+    void setRuntime(int a) {
+      initialRunTime = a * 60;
+    }
+
+    int getSecondsLeft() {
+      return secondsLeft;
+    }
+
+    void addTimeToRun(int a) {
+       runTime += a;
+       if (!on) {
+	 Relay::switchOn();
+       }
+       setTimeLeftToRun();
+    }
+
+    void switchOn() {
+      runTime = initialRunTime;
+      Relay::switchOn();
+    } 
+
+    void switchOff() {
+      runTime = 0;
+      Relay::switchOff();
+    } 
 
     void setStartTimeFromString(char *a) {
       if (  startTimesOfDay.full() ) { return; }
@@ -379,21 +412,19 @@ class TimerRelay: public Relay {
    }
 
    bool isTimeToStop() {
-     return now >= onTime + (runTime * 60);
+     return now >= onTime + runTime;
    }
 
    bool handle() {
      prevTime = now;
      now = time(nullptr);
 
-     //uptime the time left to run every second
-     if ( now != prevTime ) { 
-       setTimeLeftToRun();
-       setNextTimeToRun();
-     }
+     // only check every second
+     if ( now == prevTime ) return false;
 
-     if ( ( now == prevTime ) || ( now % 60 != 0 ) ) return false;
-     
+     setTimeLeftToRun();
+     setNextTimeToRun();
+
      // if we don't have runtime set, then just return
      if ( runTime == 0 ) return false;
 
@@ -509,8 +540,8 @@ class IrrigationRelay: public TimerRelay {
       if ( runTime == 0 ) return false;
 
       // if we're on, turn it off if it's been more than than the time to run or if it's started raining
-      // if the scheduleOverride is on, turn it off if the timer expires and resume normal
-      // operation
+	// if the scheduleOverride is on, turn it off if the timer expires and resume normal
+	// operation
       if ( on && isTimeToStop() ) {
 	switchOff();
 	return true;

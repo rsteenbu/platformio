@@ -79,8 +79,8 @@ void setup() {
   configTime(MYTZ, "pool.ntp.org");
 
   // set I2C pins (SDA, SDL)
-  //Wire.begin(GPIO2_PIN, GPIO0_PIN);
   Wire.begin(GPIO0_PIN, GPIO2_PIN);
+  mcp.begin_I2C();
 
   if ( ! veml.setup() ) {
     syslog.log(LOG_INFO, "ERROR: veml setup failed");
