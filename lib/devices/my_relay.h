@@ -97,12 +97,10 @@ class Relay {
     }
 
     void switchOn() {
-      scheduleOverride = true;
       internalOn();
     }
     
     void switchOff() {
-      scheduleOverride = false;
       internalOff();
     }
 
@@ -163,9 +161,9 @@ class GarageDoorRelay: public Relay {
 
     void operate() {
 	onTime = time(nullptr);
-        internalOn();
+        switchOn();
 	delay(100);
-        internalOff();
+        switchOff();
     }
 
     const char* state() {
@@ -227,7 +225,7 @@ class TimerRelay: public Relay {
     time_t now, prevTime = 0;
     int minutes = 0, seconds = 0;
     int secondsLeft = 0;
-    int initialRunTime;
+    int initialRunTime = 0;
 
     void setTimeLeftToRun() {
       if ( on ) { 
@@ -296,16 +294,8 @@ class TimerRelay: public Relay {
       setEveryDayOn();
     }
 
-    void setRuntimeInSeconds(int a) {
-      initialRunTime = a;
-    }
-
-    void setRuntimeInMinutes(int a) {
-      initialRunTime = a * 60;
-    }
-
     void setRuntime(int a) {
-      initialRunTime = a * 60;
+      initialRunTime = a;
     }
 
     int getSecondsLeft() {
@@ -330,8 +320,8 @@ class TimerRelay: public Relay {
       Relay::switchOff();
     } 
 
-    void setStartTimeFromString(char *a) {
-      if (  startTimesOfDay.full() ) { return; }
+    bool setStartTimeFromString(char *a) {
+      if (  startTimesOfDay.full() ) { return false; }
 
       bool processMinutes = false;
       char hours[2];
@@ -352,13 +342,16 @@ class TimerRelay: public Relay {
       }
       int startMinuteOfDay = atoi(hours) * 60 + atoi(minutes);
       startTimesOfDay.push_back(startMinuteOfDay);
+      return true;
     }
 
-    void setStartTime(int a, int b) {
+    bool setStartTime(int a, int b) {
       int startMinuteOfDay = a * 60 + b;
       if ( ! startTimesOfDay.full() ) {
 	startTimesOfDay.push_back(startMinuteOfDay);
+	return true;
       }
+      return false;
     }
 
    void setEveryOtherDayOn() {
@@ -393,9 +386,23 @@ class TimerRelay: public Relay {
      runDays[n] = 1;
    }
 
-   int checkToRun(int weekDay) { 
+   int checkDayToRun(int weekDay) { 
      return runDays[weekDay];
    } 
+   int checkDayToRun() { 
+     struct tm *timeinfo = localtime(&now);
+     int weekDay = timeinfo->tm_wday;
+     return runDays[weekDay];
+   } 
+
+   void checkStartTime(String &timesToStart) {
+     for (int i = 0; i < int(startTimesOfDay.size()); i++) {
+       if (i != 0) {
+	 timesToStart += ", ";
+       }
+       timesToStart += startTimesOfDay[i];
+     }
+   }
 
    bool isTimeToStart() {
      struct tm *timeinfo = localtime(&now);
@@ -440,7 +447,7 @@ class TimerRelay: public Relay {
 
      // if we're not on, turn it on if it's the right day and time
      if ( !on && isTimeToStart() ) {
-       internalOn();
+       switchOn();
        return true;
      } 
 
@@ -531,13 +538,15 @@ class IrrigationRelay: public TimerRelay {
       }
 
       // only process the rest every 5 seconds
-      if ( ( now == prevTime ) || ( now % 5 != 0 ) ) return false;
+      if ( now == prevTime ) return false;
 
       // set the soilMoisture level on every loop
       if (soilMoistureSensor) checkSoilMoisture();
 
       // if we don't have runtime set, then just return
-      if ( runTime == 0 ) return false;
+      if ( initialRunTime == 0 ) { 
+	return false;
+      }
 
       // if we're on, turn it off if it's been more than than the time to run or if it's started raining
 	// if the scheduleOverride is on, turn it off if the timer expires and resume normal
@@ -550,9 +559,9 @@ class IrrigationRelay: public TimerRelay {
       if ( scheduleOverride ) return false;
 
       // if we're on it started raining, turn it off
-      // but ignore the scheduleOvveride and stay running if it's set
+      // but ignore the scheduleOveride and stay running if it's set
       if ( on && !soilDry ) {
-	internalOff();
+	switchOff();
 	return true;
       }
 
@@ -561,7 +570,7 @@ class IrrigationRelay: public TimerRelay {
 	if ( ! soilDry ) {
 	  return false;
 	}
-	internalOn();
+	switchOn();
 	return true;
       } 
 
@@ -618,12 +627,12 @@ class ScheduleRelay: public Relay {
      int currHour = timeinfo->tm_hour;
      int currMinute = timeinfo->tm_min;
      if ( ! on && findTime(currHour, currMinute, onTimes) ) {
-       internalOn();
+       switchOn();
        return true;
      }
 
      if ( on && findTime(currHour, currMinute, offTimes) ) {
-       internalOff();
+       switchOff();
        return true;
      }
 
@@ -686,7 +695,7 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
        timesDark++;
 
        if (timesDark > timesToSample) {
-	 internalOn();
+	 switchOn();
 	 return true;
        }
      }
@@ -697,7 +706,7 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
        timesLight++;
 
        if (timesLight > timesToSample) {
-	 internalOff();
+	 switchOff();
 	 return true;
        }
      }

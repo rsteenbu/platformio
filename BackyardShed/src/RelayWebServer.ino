@@ -102,7 +102,7 @@ void setup() {
   IrrigationRelay * irz1 = new IrrigationRelay(7, &mcp);
   irz1->setBackwards();
   irz1->setup("patio_pots");
-  irz1->setRuntime(5);
+  irz1->setRuntime(5*60);
   irz1->setStartTime(7,0); // hour, minute
   irz1->setStartTime(15,0); // hour, minute
 //  irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
@@ -115,7 +115,7 @@ void setup() {
   irz2->setup("cottage");
   irz2->setStartTime(7,30); // hour, minute
   irz2->setStartTime(15,30); // hour, minute
-  irz2->setRuntime(20);
+  irz2->setRuntime(20*60);
 //  irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
 //  irz2->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
@@ -125,7 +125,7 @@ void setup() {
   IrrigationRelay * irz3 = new IrrigationRelay(5, &mcp);
   irz3->setBackwards();
   irz3->setup("south_fence");
-  irz3->setRuntime(5);
+  irz3->setRuntime(5*60);
   //irz3->setStartTime("7:10", "11:10", "15:10", "19:10"); 
   irz3->setStartTime(7,10); // hour, minut
   irz3->setStartTime(11,10); // hour, minute
@@ -142,7 +142,7 @@ void setup() {
   irz4->setup("hill");
   irz4->setStartTime(8,0); // hour, minute
   irz4->setStartTime(16,0); // hour, minute
-  irz4->setRuntime(20);
+  irz4->setRuntime(20*60);
 //  irz4->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
 //  irz4->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 4 %s setup done", irz4->name); 
@@ -156,7 +156,7 @@ void setup() {
   irz5->setStartTime(10,0); // hour, minute
   irz5->setStartTime(14,0); // hour, minute
   irz5->setStartTime(18,0); // hour, minute
-  irz5->setRuntime(8);
+  irz5->setRuntime(8*60);
 //  irz5->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
 //  irz5->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 5 %s setup done", irz5->name); 
@@ -168,7 +168,7 @@ void setup() {
   irz6->setup("back_fence");
   irz6->setStartTime(9,0); // hour, minute
   irz6->setStartTime(19,0); // hour, minute
-  irz6->setRuntime(20);
+  irz6->setRuntime(20*60);
 //  irz6->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
 //  irz6->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 6 %s setup done", irz6->name); 
@@ -180,7 +180,7 @@ void setup() {
   irz7->setup("north_fence");
   irz7->setStartTime(9,20); // hour, minute
   irz7->setStartTime(19,20); // hour, minute
-  irz7->setRuntime(15);
+  irz7->setRuntime(15*60);
 //  irz7->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
 //  irz7->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 7 %s setup done", irz7->name); 
@@ -325,26 +325,26 @@ void handleIrrigation() {
     if (server.arg("zone") == relay->name) {
       matchFound = true;
       if (server.arg("override") == "true") {
-	syslog.logf(LOG_INFO, "Disabling schedule for irrigation zone %s on by API request", relay->name);
 	relay->setScheduleOverride(true);
+	syslog.logf(LOG_INFO, "Schedule disabled for irrigation zone %s on by API request", relay->name);
 	server.send(200, "text/plain");
 	return;
       } else if (server.arg("override") == "false") {
-	syslog.logf(LOG_INFO, "Enabling schedule for irrigation zone %s on by API request", relay->name);
 	relay->setScheduleOverride(false);
+	syslog.logf(LOG_INFO, "Schedule enabled for irrigation zone %s on by API request", relay->name);
 	server.send(200, "text/plain");
 	return;
       } else if (server.arg("state") == "status") {
 	server.send(200, "text/plain", relay->status() ? "1" : "0");
 	return;
       } else if (server.arg("state") == "on") {
-	syslog.logf(LOG_INFO, "Turning irrigation zone %s on by API request at %lld", relay->name, relay->onTime);
 	relay->switchOn();
+	syslog.logf(LOG_INFO, "Turned irrigation zone %s on by API request for %ds", relay->name, relay->runTime);
 	server.send(200, "text/plain");
 	return;
       } else if (server.arg("state") == "off") {
-	syslog.logf(LOG_INFO, "Turning irrigation zone %s off by API request at %lld", relay->name, relay->onTime);
 	relay->switchOff();
+	syslog.logf(LOG_INFO, "Turned irrigation zone %s off by API request", relay->name);
 	server.send(200, "text/plain");
 	return;
       } else {

@@ -47,7 +47,7 @@ const int GPIO2_PIN=2;
 
 char msg[40];
 StaticJsonDocument<200> doc;
-Relay lvLights(TX_PIN);
+Relay * lvLights = new Relay(TX_PIN);
 
 Adafruit_VEML7700 veml = Adafruit_VEML7700();
 
@@ -61,8 +61,8 @@ void setup() {
   Serial.println("Booting up");
 
   // Setup the Relay
-  lvLights.setup("backyard_lights");
-  lvLights.setBackwards();
+  lvLights->setup("backyard_lights");
+  lvLights->setBackwards();
 
   // set I2C pins (SDA, SDL)
   Wire.begin(GPIO2_PIN, GPIO0_PIN);
@@ -172,15 +172,15 @@ void handleDebug() {
 
 void handleLight() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning %s on at %ld", lvLights.name, lvLights.onTime);
-    lvLights.switchOn();
+    lvLights->switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on", lvLights->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning %s off at %ld", lvLights.name, lvLights.offTime);
-    lvLights.switchOff();
+    lvLights->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off", lvLights->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
-    server.send(200, "text/plain", lvLights.on ? "1" : "0");
+    server.send(200, "text/plain", lvLights->on ? "1" : "0");
   } else {
     server.send(404, "text/plain", "ERROR: unknown light command");
   }
@@ -212,7 +212,7 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
 
-  switches["light"]["state"] = lvLights.state();
+  switches["light"]["state"] = lvLights->state();
   JsonObject sensors = doc.createNestedObject("sensors");
   sensors["lightLevel"] = lightLevel;
   sensors["temperature"] = temperature;
@@ -244,7 +244,7 @@ void loop() {
   time_t now = time(nullptr);
   if ( now != prevTime ) {
     if ( debug ) {
-      syslog.logf(LOG_INFO, "seconds changed, now: %ld, prev: %ld", now, prevTime);
+      syslog.logf(LOG_INFO, "seconds changed, now: %lld, prev: %lld", now, prevTime);
     }
     if ( now % 5 == 0 ) {
       if ( vemlSensorFound ) {

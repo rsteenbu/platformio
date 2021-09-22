@@ -97,7 +97,7 @@ void setup() {
 
   // Frontyard Irrigation
   irrigation->setup("frontyard");
-  irrigation->setRuntime(10);
+  irrigation->setRuntime(10*60);
   irrigation->setStartTime(8, 15);
   irrigation->setSoilMoistureSensor(SOIL_PIN, 86); // pin for analog read, percentage to run at
   irrigation->setSoilMoistureLimits(660, 330); //dry level, wet level
@@ -162,12 +162,12 @@ void handleDebug() {
 
 void handleLight() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %lld", lvLights->onTime);
     lvLights->switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on by API request", lvLights->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %lld", lvLights->offTime);
     lvLights->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off by API request", lvLights->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
     server.send(200, "text/plain", lvLights->on ? "1" : "0");
@@ -188,12 +188,12 @@ void handleLight() {
 
 void handleIrrigation() {
   if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning irrigation on at %lld", irrigation->onTime);
+    syslog.logf(LOG_INFO, "Turned irrigation %s on for %ds", irrigation->name, irrigation->runTime);
     irrigation->switchOn();
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning irrigation off at %lld", irrigation->offTime);
     irrigation->switchOff();
+    syslog.logf(LOG_INFO, "Turned irrigation %s off", irrigation->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
     server.send(200, "text/plain", irrigation->status() ? "1" : "0");
@@ -275,13 +275,31 @@ void loop() {
   server.handleClient();
 
   syslog.appName(IRRIGATION_APPNAME);
-  if ( irrigation->handle() ) {
-    syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", irrigation->name, irrigation->state(), irrigation->soilMoisturePercentage);
+  if ( now != prevTime && debug >= 2 )  {
+    syslog.log(LOG_INFO, "DEBUG: Enabled");
+
+    String timesToStart = "DEBUG: times to start: ";
+    irrigation->checkStartTime(timesToStart);
+    syslog.log(LOG_INFO, timesToStart);
+    
+    if ( irrigation->checkDayToRun() ) {
+      syslog.log(LOG_INFO, "DEBUG: Enabled for today");
+    }
+    if ( irrigation->isTimeToStart() ) {
+      syslog.log(LOG_INFO, "DEBUG: it's time to start");
+    }
+  }
+
+  if ( now != prevTime )  {
+    String reason;
+    if ( irrigation->handle() ) {
+      syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", irrigation->name, irrigation->state(), irrigation->soilMoisturePercentage);
+    } 
   }
 
   syslog.appName(LIGHTSWITCH_APPNAME);
   if (lvLights->handle()) {
-    syslog.logf(LOG_INFO, "%s turned %s", lvLights->name, lvLights->state());
+    syslog.logf(LOG_INFO, "Turned %s %s", lvLights->name, lvLights->state());
   }
 
   syslog.appName(SYSTEM_APPNAME);
@@ -297,14 +315,14 @@ void loop() {
 void updateDisplay() {
     syslog.appName(MOTION_APPNAME);
     if (motionsensor->activity() && !displayOn) {            // check if the input is HIGH
-      syslog.log(LOG_INFO, "Person detected, turning display on");
       display.ssd1306_command(SSD1306_DISPLAYON);
       displayOn = true;
+      syslog.log(LOG_INFO, "Person detected, turned display on");
     }
     if (!motionsensor->activity() && displayOn) {
-      syslog.log(LOG_INFO, "Nobody detected, turning display off");
       display.ssd1306_command(SSD1306_DISPLAYOFF);
       displayOn = false;
+      syslog.log(LOG_INFO, "Nobody detected, turned display off");
     }
 
     if (displayOn) {

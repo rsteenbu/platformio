@@ -238,14 +238,14 @@ void loop() {
       if (val == HIGH) {            // check if the input is HIGH
 	if (pirState == LOW) {
 	  // we have just turned on
-	  syslog.log(LOG_INFO, "Person detected, turning light on");
+	  syslog.logf(LOG_INFO, "Person detected, turned %s on", lights->name);
 	  lights.switchOn();
 	  pirState = HIGH;
 	}
       } else {
 	if (pirState == HIGH){
-	  syslog.log(LOG_INFO, "Nobody detected, Turning light off");
 	  lights.switchOff();
+	  syslog.logf(LOG_INFO, "Nobody detected, turned %s off", lights->name);
 	  Serial.println("Motion ended!");
 	  pirState = LOW;
 	}
@@ -276,22 +276,22 @@ void loop() {
 
   // Check the request and determine what to do with the switch relay
   if (req.indexOf(F("/light/on")) != -1) {
-    syslog.log(LOG_INFO, "Turning light on as requested");
     lights.switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on by API request", lights->name);
   } else if (req.indexOf(F("/light/off")) != -1) {
-    syslog.log(LOG_INFO, "Turning light off as requested");
     lights.switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off by API request", lights->name);
   } else if (req.indexOf(F("/light/status")) != -1) {
     if (debug == 2) {
       syslog.logf(LOG_INFO, "Light status: %s", lights.state());
     }
     client.print(lights.on);
   } else if (req.indexOf(F("/sensor/on")) != -1) {
-    syslog.log(LOG_INFO, "Turning motion sensor switiching on");
     sensorActive = true;
+    syslog.log(LOG_INFO, "Turned motion sensor switiching on");
   } else if (req.indexOf(F("/sensor/off")) != -1) {
-    syslog.log(LOG_INFO, "Turning motion sensor switiching off");
     sensorActive = false;
+    syslog.log(LOG_INFO, "Turned motion sensor switiching off");
   } else if (req.indexOf(F("/sensor/status")) != -1) {
     if (debug == 2) {
       syslog.logf(LOG_INFO, "Distance Sensor switching status: %s", sensorActive ? "on" : "off");

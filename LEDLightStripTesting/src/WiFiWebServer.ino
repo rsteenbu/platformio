@@ -139,15 +139,15 @@ void loop()
 
   EVERY_N_SECONDS(5) {
     if (i % 2) {
-      if (debug) {
-	syslog.logf(LOG_INFO, "Turning %d pin high", DATA2_PIN);
-      }
       digitalWrite(DATA2_PIN, HIGH);
-    } else {
       if (debug) {
-	syslog.logf(LOG_INFO, "Turning %d pin low", DATA2_PIN);
+	syslog.logf(LOG_INFO, "Turned %d pin high", DATA2_PIN);
       }
+    } else {
       digitalWrite(DATA2_PIN, LOW);
+      if (debug) {
+	syslog.logf(LOG_INFO, "Turned %d pin low", DATA2_PIN);
+      }
     }
   }
 
