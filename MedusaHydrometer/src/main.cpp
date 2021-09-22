@@ -79,18 +79,18 @@ void handleDebug() {
 void handleMister() {
   if (server.arg("state") == "on") {
     Mister->switchOn();
-    syslog.logf(LOG_INFO, "Turning %s on for %ds", Mister->name, Mister->runTime);
+    syslog.logf(LOG_INFO, "Turned %s on for %ds", Mister->name, Mister->runTime);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
     Mister->switchOff();
-    syslog.logf(LOG_INFO, "Turning %s off", Mister->name);
+    syslog.logf(LOG_INFO, "Turned %s off", Mister->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
     server.send(200, "text/plain", Mister->on ? "1" : "0");
   } else if (server.arg("addTime") != "") {
     int timeToAdd = server.arg("addTime").toInt();
     Mister->addTimeToRun(timeToAdd);
-    syslog.logf(LOG_INFO, "Added %d seconds, total runtime now %ds, time left %ds", timeToAdd, Mister->getSecondsLeft(), Mister->runTime);
+    syslog.logf(LOG_INFO, "Added %d seconds, total runtime now %ds, time left %ds", timeToAdd, Mister->runTime, Mister->getSecondsLeft());
     server.send(200, "text/plain");
   } else {
     server.send(404, "text/plain", "ERROR: unknown mister command");
@@ -100,13 +100,13 @@ void handleMister() {
 
 void handleDisplay() {
   if (server.arg("state") == "on") {
-    syslog.log(LOG_INFO, "Turning on LCD Display");
     server.send(200, "text/plain");
     lcd->setBackLight(true);
+    syslog.log(LOG_INFO, "Turned LCD Display on");
   } else if (server.arg("state") == "off") {
-    syslog.log(LOG_INFO, "Turning off LCD Display");
     server.send(200, "text/plain");
     lcd->setBackLight(false);
+    syslog.log(LOG_INFO, "Turned LCD Display off");
   } else {
     server.send(404, "text/plain", "ERROR: unknown scani2c command");
   }
@@ -152,7 +152,7 @@ void setup() {
 
   // Setup the Relay
   Mister->setup("misting_system");
-  Mister->setRuntimeInSeconds(10);
+  Mister->setRuntime(10);
 
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);
@@ -203,11 +203,11 @@ void loop() {
   pir->handle();
   if (pir->activity() && ! lcd->state) {
     lcd->setBackLight(true);
-    syslog.log(LOG_INFO, "Person detected, turning backlight on");
+    syslog.log(LOG_INFO, "Person detected, turned backlight on");
   } 
   if (!pir->activity() && lcd->state) {
     lcd->setBackLight(false);
-    syslog.log(LOG_INFO, "Nobody detected, turning backlight off");
+    syslog.log(LOG_INFO, "Nobody detected, turned backlight off");
   }
 
   Mister->handle();

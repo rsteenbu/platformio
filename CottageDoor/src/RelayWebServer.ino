@@ -138,12 +138,12 @@ void handleRelay() {
   if (server.arg("state") == "status") {
     server.send(200, "text/plain", lightSwitch->on ? "1" : "0");
   } else if (server.arg("state") == "on") {
-    syslog.logf(LOG_INFO, "Turning light on at %lld", lightSwitch->onTime);
     lightSwitch->switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on", lightSwitch->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    syslog.logf(LOG_INFO, "Turning light off at %lld", lightSwitch->offTime);
     lightSwitch->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off", lightSwitch->name);
     server.send(200, "text/plain");
   } else {
     server.send(404, "text/plain", "ERROR: uknonwn light command");

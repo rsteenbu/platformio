@@ -95,13 +95,13 @@ void handleDebug() {
 
 void handleScanI2C() {
   if (server.arg("state") == "on") {
-    syslog.log(LOG_INFO, "Turning on I2C Scanning");
     server.send(200, "text/plain");
     scanI2CMode = true;
+    syslog.log(LOG_INFO, "Turned on I2C Scanning");
   } else if (server.arg("state") == "off") {
-    syslog.log(LOG_INFO, "Turning off I2C Scanning");
     server.send(200, "text/plain");
     scanI2CMode = false;
+    syslog.log(LOG_INFO, "Turned off I2C Scanning");
   } else {
     server.send(404, "text/plain", "ERROR: unknown scani2c command");
   }
