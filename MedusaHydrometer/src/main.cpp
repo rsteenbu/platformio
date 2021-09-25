@@ -97,7 +97,6 @@ void handleMister() {
   }
 }
 
-
 void handleDisplay() {
   if (server.arg("state") == "on") {
     server.send(200, "text/plain");
@@ -112,6 +111,28 @@ void handleDisplay() {
   }
 }
 
+void handleSensors() {
+  if (server.arg("temp") == "left") {
+    char msg[10];
+    sprintf(msg, "%0.2f", leftTemp);
+    server.send(200, "text/plain", msg);
+  } else if (server.arg("temp") == "right") {
+    char msg[10];
+    sprintf(msg, "%0.2f", rightTemp);
+    server.send(200, "text/plain", msg);
+  } else if (server.arg("humidity") == "left") {
+    char msg[10];
+    sprintf(msg, "%0.2f", leftHumidity);
+    server.send(200, "text/plain", msg);
+  } else if (server.arg("humidity") == "right") {
+    char msg[10];
+    sprintf(msg, "%0.2f", rightHumidity);
+    server.send(200, "text/plain", msg);
+  } else {
+    server.send(404, "text/plain", "ERROR: Sensor not found.");
+  }
+}
+
 void handleStatus() {
   time_t now;
   now = time(nullptr);
@@ -123,7 +144,7 @@ void handleStatus() {
   JsonObject sensors = doc.createNestedObject("sensors");
   sensors["left"]["humidity"] = leftHumidity;
   sensors["left"]["temperature"] = leftTemp;
-  sensors["right humidity"] = rightHumidity;
+  sensors["right"]["humidity"] = rightHumidity;
   sensors["right"]["temperature"] = rightTemp;
 
   doc["LCD Backlight Status"] = lcd->state;
@@ -180,8 +201,9 @@ void setup() {
   // Start the server
   server.on("/debug", handleDebug);
   server.on("/mister", handleMister);
-  server.on("/status", handleStatus);
   server.on("/display", handleDisplay);
+  server.on("/sensors", handleSensors);
+  server.on("/status", handleStatus);
   server.begin();
 
   dhtLeft.begin();
