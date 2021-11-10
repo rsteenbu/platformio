@@ -20,7 +20,7 @@
 #include <DallasTemperature.h>
 
 #include <my_relay.h>
-#include <my_pir.h>
+#include <my_motion.h>
 
 ESP8266WebServer server(80);
 
@@ -56,7 +56,7 @@ DeviceAddress frontyardThermometer;
 DuskToDawnScheduleRelay * lvLights = new DuskToDawnScheduleRelay(D4);
 IrrigationRelay * irrigation = new IrrigationRelay(D5);
 
-PIR * motionsensor = new PIR(D6);
+MOTION * motionsensor = new MOTION(D6);
 
 float temperature = 0;
 bool displayOn = true;
@@ -66,7 +66,7 @@ void setup() {
   Serial.println("Booting up");
 
   // prepare the motion sensor
-  motionsensor->setup();
+  motionsensor->setup("frontyard");
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);
@@ -91,6 +91,7 @@ void setup() {
   // Dusk To Dawn LV Lights
   lvLights->setup("lvlights");
   lvLights->setNightOffOnHours(0,5);
+  lvLights->setDusk(70);
   if (! lvLights->setVemlLightSensor()) {
     syslog.log(LOG_INFO, "ERROR: Setup of Veml Sensor failed");
   }
@@ -99,7 +100,7 @@ void setup() {
   irrigation->setup("frontyard");
   irrigation->setRuntime(10*60);
   irrigation->setStartTime(8, 15);
-  irrigation->setSoilMoistureSensor(SOIL_PIN, 86); // pin for analog read, percentage to run at
+  irrigation->setSoilMoistureSensor(SOIL_PIN, 70); // pin for analog read, percentage to run at
   irrigation->setSoilMoistureLimits(660, 330); //dry level, wet level
 
   // Start the HTTP server
@@ -249,6 +250,7 @@ void handleStatus() {
   sensors["lightLevel"] = lvLights->lightLevel;
   sensors["soilMoistureLevel"] = irrigation->soilMoistureLevel;
   sensors["soilMoisturePercentage"] = irrigation->soilMoisturePercentage;
+  sensors[motionsensor->name]["state"] = motionsensor->activity();
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
   strftime (timeString,20,"%D %T",timeinfo);

@@ -6,8 +6,8 @@
 #warning "Requires FastLED 3.1 or later; check github for latest code."
 #endif
 
-#define NUM_LEDS_PER_STRIP 300
-#define NUM_STRIPS 3
+#define NUM_LEDS_PER_STRIP 100
+#define NUM_STRIPS 8
 
 #define NUM_LEDS      NUM_LEDS_PER_STRIP * NUM_STRIPS
 #define VOLTS          12

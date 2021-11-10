@@ -80,7 +80,9 @@ void setup() {
 
   // set I2C pins (SDA, SDL)
   Wire.begin(GPIO0_PIN, GPIO2_PIN);
-  mcp.begin_I2C();
+  if (!mcp.begin_I2C()) {
+    syslog.log(LOG_INFO, "ERROR: MCP setup failed");
+  }
 
   if ( ! veml.setup() ) {
     syslog.log(LOG_INFO, "ERROR: veml setup failed");
@@ -152,11 +154,11 @@ void setup() {
   IrrigationRelay * irz5 = new IrrigationRelay(3, &mcp);
   irz5->setBackwards();
   irz5->setup("garden");
-  irz5->setStartTime(6,0); // hour, minute
-  irz5->setStartTime(10,0); // hour, minute
-  irz5->setStartTime(14,0); // hour, minute
-  irz5->setStartTime(18,0); // hour, minute
-  irz5->setRuntime(8*60);
+//  irz5->setStartTime(6,0); // hour, minute
+//  irz5->setStartTime(10,0); // hour, minute
+//  irz5->setStartTime(14,0); // hour, minute
+//  irz5->setStartTime(18,0); // hour, minute
+//  irz5->setRuntime(8*60);
 //  irz5->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
 //  irz5->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 5 %s setup done", irz5->name); 
