@@ -13,13 +13,13 @@
 #include <my_veml.h>
 
 class Relay {
-  int pin;
   int onVal = HIGH;
   int offVal = LOW;
   Adafruit_MCP23X17* mcp;
   bool i2cPins = false;
 
   protected:
+    int pin;
     void internalOn() {
       if (!on) {
         i2cPins ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
@@ -114,10 +114,14 @@ class Relay {
 };
 
 class GarageDoorRelay: public Relay {
+  bool i2cPins = false;
+  bool useLeds = false;
+  Adafruit_MCP23X17* mcp;
+  int DOOR_PIN;
   int REED_OPEN_PIN;
   int REED_CLOSED_PIN;
-  int LED_OPEN_PIN = -1;
-  int LED_CLOSED_PIN = -1;
+  int LED_OPEN_PIN;
+  int LED_CLOSED_PIN;
   const int DOOR_OPEN = 0;
   const int DOOR_OPENING = 1;
   const int DOOR_CLOSED = 2;
@@ -129,88 +133,117 @@ class GarageDoorRelay: public Relay {
 
     //constructurs
     GarageDoorRelay(int a, int b, int c ): Relay(a) {
+      DOOR_PIN = a;
       REED_OPEN_PIN = b;
       REED_CLOSED_PIN = c;
 
+      useLeds = false;
       // Since the other end of the reed switch is connected to ground, we need
       // to pull-up the reed switch pin internally.
       pinMode(REED_OPEN_PIN, INPUT_PULLUP);
       pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
     }
     GarageDoorRelay(int a, int b, int c, int d, int e ): Relay(a) {
+      DOOR_PIN = a;
       REED_OPEN_PIN = b;
       REED_CLOSED_PIN = c;
       LED_OPEN_PIN = d;
       LED_CLOSED_PIN = e;
 
-      // Since the other end of the reed switch is connected to ground, we need
-      // to pull-up the reed switch pin internally.
-      pinMode(REED_OPEN_PIN, INPUT_PULLUP);
-      pinMode(LED_OPEN_PIN, OUTPUT);
-      pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
-      pinMode(LED_CLOSED_PIN, OUTPUT);
+      useLeds = true;
+    }
+    GarageDoorRelay(int a, int b, int c, int d, int e, Adafruit_MCP23X17* f): Relay(a, f) {
+      DOOR_PIN = a;
+      REED_OPEN_PIN = b;
+      REED_CLOSED_PIN = c;
+      LED_OPEN_PIN = d;
+      LED_CLOSED_PIN = e;
+      mcp = f;
 
-      // prepare LED Pins
-      pinMode(LED_BUILTIN, OUTPUT);
-      digitalWrite(LED_BUILTIN, LOW);
+      i2cPins = true;
+      useLeds = true;
     }
 
-    int status() {
+   int status() {
       return doorState;
     }
 
-    void operate() {
-	onTime = time(nullptr);
-        switchOn();
-	delay(100);
-        switchOff();
-    }
+   void setup(const char* a) {
+     Relay::pin = DOOR_PIN;
+     Relay::setup(a);
 
-    const char* state() {
-      switch (doorState) {
-	case 0:
-	  return "OPEN";
-	  break;
-	case 1:
-	  return "OPENING";
-	  break;
-	case 2:
-	  return "CLOSED";
-	  break;
-	case 3:
-	  return "CLOSING";
-	  break;
-      }
-      return "UKNOWN";
-    }
+     // Since the other end of the reed switch is connected to ground, we need
+     // to pull-up the reed switch pin internally.
+     i2cPins ? (*mcp).pinMode(REED_OPEN_PIN, INPUT_PULLUP) : 
+       pinMode(REED_OPEN_PIN, INPUT_PULLUP);
+     i2cPins ? (*mcp).pinMode(REED_CLOSED_PIN, INPUT_PULLUP) : 
+       pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
+
+     if (useLeds) {
+       i2cPins ? (*mcp).pinMode(LED_OPEN_PIN, OUTPUT) : 
+	 pinMode(LED_OPEN_PIN, OUTPUT);
+       i2cPins ? (*mcp).pinMode(LED_CLOSED_PIN, OUTPUT) : 
+	 pinMode(LED_CLOSED_PIN, OUTPUT);
+       // Set the LED's to off initially
+       i2cPins ? (*mcp).digitalWrite(LED_OPEN_PIN, LOW) : 
+	 digitalWrite(LED_OPEN_PIN, LOW); 
+       i2cPins ? (*mcp).digitalWrite(LED_CLOSED_PIN, LOW) : 
+	 digitalWrite(LED_CLOSED_PIN, LOW);
+     }
+   }
+
+   void operate() {
+     onTime = time(nullptr);
+     switchOn();
+     delay(100);
+     switchOff();
+   }
+
+   const char* state() {
+     switch (doorState) {
+       case 0:
+	 return "OPEN";
+	 break;
+       case 1:
+	 return "OPENING";
+	 break;
+       case 2:
+	 return "CLOSED";
+	 break;
+       case 3:
+	 return "CLOSING";
+	 break;
+     }
+     return "UKNOWN";
+   }
 
    bool handle() {
-     int doorOpen = digitalRead(REED_OPEN_PIN); // Check to see of the door is open
+     int doorOpen = i2cPins ? (*mcp).digitalRead(REED_OPEN_PIN) : digitalRead(REED_OPEN_PIN); // Check to see of the door is open
      if (doorOpen == LOW) { // Door detected is in the open position
        if (doorState != DOOR_OPEN) {
-	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
+	 if (useLeds) i2cPins ? (*mcp).digitalWrite(LED_OPEN_PIN, HIGH) : digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
 	 doorState = DOOR_OPEN;
 	 return true;
        }
      } else { // Door is not in the open position
        if (doorState == DOOR_OPEN ) {
-	 if (LED_OPEN_PIN) digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
+	 if (useLeds) i2cPins ? (*mcp).digitalWrite(LED_OPEN_PIN, LOW) : digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
 	 doorState = DOOR_CLOSING;
 	 return true;
        }
      }
 
-     int doorClosed = digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
+     int doorClosed = i2cPins ? (*mcp).digitalRead(REED_CLOSED_PIN) : digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
      if (doorClosed == LOW) // Door detected in the closed position
      {
        if (doorState != DOOR_CLOSED) {
-	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
+	 if (LED_CLOSED_PIN) i2cPins ? (*mcp).digitalWrite(LED_CLOSED_PIN, HIGH) : digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
 	 doorState = DOOR_CLOSED;
 	 return true;
        }
      } else { // Door is not in the closed position
        if (doorState == DOOR_CLOSED) {
-	 if (LED_CLOSED_PIN) digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
+	 if (LED_CLOSED_PIN) i2cPins ? (*mcp).digitalWrite(LED_CLOSED_PIN, LOW) : digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
 	 doorState = DOOR_OPENING;
 	 return true;
        }
@@ -644,7 +677,7 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
   int const timesToSample = 10;
   int timesLight = 0;
   int timesDark = 0;
-  int dusk = 100;
+  int dusk = 70;
   int nightOffHour = 0;
   int morningOnHour = 5;
   Veml veml;

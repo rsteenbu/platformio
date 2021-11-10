@@ -50,10 +50,6 @@ LCD * lcd = new LCD();
 PIR * pir = new PIR(D7); 
 TimerRelay * Mister = new TimerRelay(D3);
 
-int const PIR_PIN = D2;  //yellow
-int pirState = LOW;  //start with no motion detected
-bool sensorActive = true;
-
 void handleDebug() {
   if (server.arg("level") == "status") {
     char msg[40];
