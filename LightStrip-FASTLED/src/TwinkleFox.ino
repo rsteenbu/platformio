@@ -1,11 +1,29 @@
 #define USE_OCTOWS2811
 #include <OctoWS2811.h>
 #include "FastLED.h"
+#include <WiFiEspAT.h>
+#define USE_WIFI_NINA 0
+#define WIFI_USING_ESP_AT     true
+#define AT_BAUD_RATE 115200
+#include <WiFiWebServer.h>
+#include <Syslog.h>
+#include <ArduinoJson.h>
+
+WiFiWebServer server(80);
+WiFiUdpSender udpClient;
+
+int debug = 0;
+char msg[40];
+
+// This device info
+const char* APP_NAME = "octoWS2811";
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 #if defined(FASTLED_VERSION) && (FASTLED_VERSION < 3001000)
 #warning "Requires FastLED 3.1 or later; check github for latest code."
 #endif
 
+#define JSON_SIZE 200
 #define NUM_LEDS_PER_STRIP 100
 #define NUM_STRIPS 8
 
@@ -86,7 +104,7 @@ CRGBArray<NUM_LEDS> leds;
 #define TWINKLE_DENSITY 8
 
 // How often to change color palettes.
-#define SECONDS_PER_PALETTE  30
+#define SECONDS_PER_PALETTE 30 
 // Also: toward the bottom of the file is an array 
 // called "ActivePaletteList" which controls which color
 // palettes are used; you can add or remove color palettes
@@ -114,21 +132,88 @@ CRGBPalette16 gCurrentPalette;
 CRGBPalette16 gTargetPalette;
 
 void setup() {
+//  Serial.begin();
+  Serial.println("This may be sent before your PC is able to receive");
+  while (!Serial) {
+    // wait for Arduino Serial Monitor to be ready
+  }
+  Serial.println("This line will definitely appear in the serial monitor");
+
+  Serial1.begin(AT_BAUD_RATE);
+  WiFi.init(Serial1);
+  WiFi.disconnect(); // to clear the way. not persistent
+  WiFi.setPersistent(); // set the following WiFi connection as persistent
+  WiFi.endAP(); // to disable default automatic start of persistent AP at startup
+
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    // don't continue
+    while (true);
+  }
+
+  Serial.println();
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(WIFI_SSID);
+
+  if (!WiFi.setHostname(DEVICE_HOSTNAME)) {
+    Serial.println("Hostname failed to configure");
+  }
+
+  int status = WiFi.begin(WIFI_SSID, WIFI_PASS);
+  if (status == WL_CONNECTED) {
+    Serial.println();
+    Serial.println("Connected to WiFi network.");
+  } else {
+    WiFi.disconnect(); // remove the WiFi connection
+    Serial.println();
+    Serial.println("Connection to WiFi network failed.");
+  }
+
+  Serial.println();
+
+  // start the http webserver
+  server.begin();
+
+  IPAddress ip = WiFi.localIP();
+  syslog.logf(LOG_INFO, "Alive! at IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+
+  server.on("/status", handleStatus);
+
   delay( 3000 ); //safety startup delay
   LEDS.addLeds<OCTOWS2811>(leds, NUM_LEDS_PER_STRIP);
   LEDS.setBrightness(32);
 //  FastLED.setMaxPowerInVoltsAndMilliamps( VOLTS, MAX_MA);
 
   chooseNextColorPalette(gTargetPalette);
+
+}
+
+void handleStatus() {
+  StaticJsonDocument<JSON_SIZE> doc;
+
+  doc["debug"] = debug;
+
+  size_t jsonDocSize = measureJsonPretty(doc);
+  if (jsonDocSize > JSON_SIZE) {
+    char msg[40];
+    sprintf(msg, "ERROR: JSON message too long, %d", jsonDocSize);
+    server.send(500, "text/plain", msg);
+  } else {
+    String httpResponse;
+    serializeJsonPretty(doc, httpResponse);
+    server.send(500, "text/plain", httpResponse);
+  }
 }
 
 
 void loop()
 {
+  server.handleClient();
+
   EVERY_N_SECONDS( SECONDS_PER_PALETTE ) { 
     chooseNextColorPalette( gTargetPalette ); 
   }
-  
+
   EVERY_N_MILLISECONDS( 10 ) {
     nblendPaletteTowardPalette( gCurrentPalette, gTargetPalette, 12);
   }
@@ -381,3 +466,5 @@ void chooseNextColorPalette( CRGBPalette16& pal)
 
   pal = *(ActivePaletteList[whichPalette]);
 }
+
+
