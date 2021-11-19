@@ -1,16 +1,25 @@
+#include "defines.h"
+
 #define USE_OCTOWS2811
 #include <OctoWS2811.h>
 #include "FastLED.h"
 #include <WiFiEspAT.h>
-#define USE_WIFI_NINA 0
-#define WIFI_USING_ESP_AT     true
 #define AT_BAUD_RATE 115200
 #include <WiFiWebServer.h>
 #include <Syslog.h>
 #include <ArduinoJson.h>
 
+#include <TimeLib.h>
+
 WiFiWebServer server(80);
 WiFiUdpSender udpClient;
+
+char timeServer[]         = "time.nist.gov";  // NTP server
+unsigned int localPort    = 2390;             // local port to listen for UDP packets
+const int NTP_PACKET_SIZE = 48;       // NTP timestamp is in the first 48 bytes of the message
+const int UDP_TIMEOUT     = 2000;     // timeout in miliseconds to wait for an UDP packet to arrive
+byte packetBuffer[NTP_PACKET_SIZE];   // buffer to hold incoming and outgoing packets
+WiFiUDP Udp;
 
 int debug = 0;
 char msg[40];
@@ -177,6 +186,13 @@ void setup() {
   IPAddress ip = WiFi.localIP();
   syslog.logf(LOG_INFO, "Alive! at IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
 
+
+  //Udp.begin(localPort);
+  //Serial.println(Udp.localPort());
+  //Serial.println("waiting for sync");
+  //setSyncProvider(getNtpTime);
+  //setSyncInterval(300);
+
   server.on("/status", handleStatus);
 
   delay( 3000 ); //safety startup delay
@@ -192,6 +208,11 @@ void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
 
   doc["debug"] = debug;
+
+  //char timeString[20];
+  // 11/16/21 20:17:07
+
+  //breakTime(time, &tm);
 
   size_t jsonDocSize = measureJsonPretty(doc);
   if (jsonDocSize > JSON_SIZE) {
@@ -467,4 +488,28 @@ void chooseNextColorPalette( CRGBPalette16& pal)
   pal = *(ActivePaletteList[whichPalette]);
 }
 
+void sendNTPpacket(char *ntpSrv)
+{
+  // set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form NTP request
+  // (see URL above for details on the packets)
 
+  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1] = 0;     // Stratum, or type of clock
+  packetBuffer[2] = 6;     // Polling Interval
+  packetBuffer[3] = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12]  = 49;
+  packetBuffer[13]  = 0x4E;
+  packetBuffer[14]  = 49;
+  packetBuffer[15]  = 52;
+
+  // all NTP fields have been given values, now
+  // you can send a packet requesting a timestamp:
+  Udp.beginPacket(ntpSrv, 123); //NTP requests are to port 123
+
+  Udp.write(packetBuffer, NTP_PACKET_SIZE);
+
+  Udp.endPacket();
+}
