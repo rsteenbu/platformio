@@ -1,0 +1,7 @@
+getting pio to work with Teensy and octows2811 on a rpi 4.0 is not easy
+- need to specify in platform.io
+platform_packages =
+;   toolchain-gccarmnoneeabi@https://bintray.com/platformio/tool-packages/download_file?file_path=3579c14-toolchain-gccarmnoneeabi-linux_armv6l-1.90301.200702.tar.gz
+;   tool-teensy@https://github.com/maxgerhardt/pio-tool-teensy-arm/archive/master.zip
+- had to copy libarm_cortexM7lfsp_math.a to ~/.platformio/packages/toolchain-gccarmnoneeabi/arm-none-eabi/lib
+
