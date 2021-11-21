@@ -4,10 +4,74 @@
 #include <WiFiWebServer.h>
 #include <Syslog.h>
 #include <ArduinoJson.h>
+#include <Timezone.h> 
 #include <TimeLib.h>
+
+#include <my_ntp.h>
+
+
+//const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
+//byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
+
+class teensyRelay {
+  int onVal = HIGH;
+  int offVal = LOW;
+
+  protected:
+    int pin;
+
+  public:
+    //variables
+    bool on = false;
+    char* name;
+
+    //constructors
+    teensyRelay (int a): pin(a) {}
+
+    int status() {
+      if (on) {
+	return 1;
+      } else {
+	return 0;
+      }
+    }
+    void setup(const char* a) {
+      name = new char[strlen(a)+1];
+      strcpy(name,a);
+
+      pinMode(pin, OUTPUT);
+      digitalWrite(pin, offVal); // start off
+    }
+    void switchOn() {
+      if (!on) {
+        digitalWrite(pin, onVal);
+        on = true;
+      }
+    }
+    void switchOff() {
+      if (on) {
+        digitalWrite(pin, offVal);
+        on = false;
+      }
+    }
+    const char* state() {
+      if (on) {
+	return "on";
+      } else { 
+	return "off";
+      }
+    }
+};
+
+teensyRelay * XmasTree = new teensyRelay(22);
 
 WiFiWebServer server(80);
 WiFiUdpSender udpClient;
+
+IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
+//const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
+//byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
+NTP ntp;
 
 int debug = 0;
 char msg[40];
@@ -18,42 +82,26 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 
 #define JSON_SIZE 200
 
-unsigned int localPort = 2390;      // local port to listen for UDP packets
-IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
-const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
-byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
+// US Pacific Time Zone 
+TimeChangeRule usPST = {"PST", Second, Sun, Mar, 2, -420};  // Daylight time = UTC - 7 hours
+TimeChangeRule usPDT = {"PDT", First, Sun, Nov, 2, -480};   // Standard time = UTC - 8 hours
+Timezone usPacific(usPST, usPDT);
+
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP Udp;
 
-void printWifiStatus() 
-{
-  // print the SSID of the network you're attached to:
-  // you're connected now, so print out the data
-  Serial.print(F("You're connected to the network, IP = "));
-  Serial.println(WiFi.localIP());
-  
-  Serial.print(F("SSID: "));
-  Serial.print(WiFi.SSID());
-
-  // print the received signal strength:
-  long rssi = WiFi.RSSI();
-  Serial.print(F(", Signal strength (RSSI):"));
-  Serial.print(rssi);
-  Serial.println(F(" dBm"));
-}
-
 void setup() {
-//  Serial.begin();
-  while (!Serial);
-
   Serial1.begin(115200);
+
+  XmasTree->setup("xmastree");
+
   WiFi.init(Serial1);
+  WiFi.setHostname(DEVICE_HOSTNAME);
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("Communication with WiFi module failed!");
     // don't continue
     while (true);
   }
-
   // waiting for connection to Wifi network set with the SetupWiFiConnection sketch
   Serial.println("Waiting for connection to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
@@ -68,72 +116,52 @@ void setup() {
   IPAddress ip = WiFi.localIP();
   syslog.logf(LOG_INFO, "Alive! at IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
 
-
   server.on("/status", handleStatus);
+  server.on("/tree", handleTree);
 
-  Udp.begin(localPort);
-
-  sendNTPpacket(timeServer); // send an NTP packet to a time server
+  Udp.begin(2390);
   // wait to see if a reply is available
   delay(1000);
-  if (Udp.parsePacket()) {
-    Serial.println(F("packet received"));
-    // We've received a packet, read the data from it
-    Udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
 
-    //the timestamp starts at byte 40 of the received packet and is four bytes,
-    // or two words, long. First, esxtract the two words:
+  ntp.setup(timeServer, Udp);
 
-    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
-    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
-    // combine the four bytes (two words) into a long integer
-    // this is NTP time (seconds since Jan 1 1900):
-    unsigned long secsSince1900 = highWord << 16 | lowWord;
-    
-    Serial.print(F("Seconds since Jan 1 1900 = "));
-    Serial.println(secsSince1900);
-
-    // now convert NTP time into everyday time:
-    Serial.print(F("Unix time = "));
-    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
-    const unsigned long seventyYears = 2208988800UL;
-    // subtract seventy years:
-    unsigned long epoch = secsSince1900 - seventyYears;
-    // print Unix time:
-    Serial.println(epoch);
-
-    // print the hour, minute and second:
-    Serial.print(F("The UTC time is "));       // UTC is the time at Greenwich Meridian (GMT)
-    Serial.print((epoch  % 86400L) / 3600); // print the hour (86400 equals secs per day)
-    Serial.print(':');
-    
-    if (((epoch % 3600) / 60) < 10) 
-    {
-      // In the first 10 minutes of each hour, we'll want a leading '0'
-      Serial.print('0');
-    }
-    Serial.print((epoch  % 3600) / 60); // print the minute (3600 equals secs per minute)
-    Serial.print(':');
-    
-    if ((epoch % 60) < 10) 
-    {
-      // In the first 10 seconds of each minute, we'll want a leading '0'
-      Serial.print('0');
-    }
-    Serial.println(epoch % 60); // print the second
-  } else { 
-    Serial.println("No UDP Packet received");
+  // Set the system time from the NTP epoch
+  setSyncProvider(getTeensy3Time);
+  delay(100);
+  if (timeStatus()!= timeSet) {
+    Serial.println("Unable to sync with the RTC");
+  } else {
+    Serial.println("RTC has set the system time");
   }
 
+  if (ntp.epoch == 0) {
+    Serial.println("Setting NTP time failed");
+  } else {
+    time_t eastern = usPacific.toLocal(ntp.epoch);
+    Teensy3Clock.set(eastern); // set the RTC
+    setTime(eastern);
+  }
+}
+
+time_t getTeensy3Time() {
+  return Teensy3Clock.get();
 }
 
 void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
+  JsonObject switches = doc.createNestedObject("switches");
+  JsonObject sensors = doc.createNestedObject("sensors");
 
+  switches[XmasTree->name]["state"] = XmasTree->state();
+  int lightLevel = 0;
+  lightLevel = analogRead(A9);
+  sensors["lightLevel"] = lightLevel;
   doc["debug"] = debug;
 
-  //char timeString[20];
   // 11/16/21 20:17:07
+  char timeString[20];
+  sprintf(timeString, "%02d/%02d/%02d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
+  doc["time"] = timeString;
 
   //breakTime(time, &tm);
 
@@ -149,33 +177,24 @@ void handleStatus() {
   }
 }
 
+void handleTree() {
+  if (server.arg("state") == "status") {
+    server.send(200, "text/plain", (XmasTree->on ? "1" : "0"));
+  } else if (server.arg("state") == "on") {
+    XmasTree->switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    XmasTree->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
+    server.send(200, "text/plain");
+  } else {
+    server.send(404, "text/plain", "ERROR: uknonwn light command");
+  }
+}
 
 void loop()
 {
   server.handleClient();
 }
 
-void sendNTPpacket(IPAddress& address) 
-{
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
-
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  Udp.beginPacket(address, 123); //NTP requests are to port 123
-  //Serial.println("4");
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-  Udp.endPacket();
-}
