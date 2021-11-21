@@ -106,7 +106,7 @@ void setup() {
   irz1->setup("patio_pots");
   irz1->setRuntime(5*60);
   irz1->setStartTime(7,0); // hour, minute
-  irz1->setStartTime(15,0); // hour, minute
+//  irz1->setStartTime(15,0); // hour, minute
 //  irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
 //  irz1->setSoilMoistureLimits(660, 218); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 1 %s setup done", irz1->name);
@@ -115,8 +115,8 @@ void setup() {
   IrrigationRelay * irz2 = new IrrigationRelay(6, &mcp);
   irz2->setBackwards();
   irz2->setup("cottage");
-  irz2->setStartTime(7,30); // hour, minute
-  irz2->setStartTime(15,30); // hour, minute
+//  irz2->setStartTime(7,30); // hour, minute
+//  irz2->setStartTime(15,30); // hour, minute
   irz2->setRuntime(20*60);
 //  irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
 //  irz2->setSoilMoistureLimits(430, 179); // dry, wet
@@ -128,11 +128,10 @@ void setup() {
   irz3->setBackwards();
   irz3->setup("south_fence");
   irz3->setRuntime(5*60);
-  //irz3->setStartTime("7:10", "11:10", "15:10", "19:10"); 
   irz3->setStartTime(7,10); // hour, minut
-  irz3->setStartTime(11,10); // hour, minute
+//  irz3->setStartTime(11,10); // hour, minute
   irz3->setStartTime(15,10); // hour, minute
-  irz3->setStartTime(19,10); // hour, minute
+//  irz3->setStartTime(19,10); // hour, minute
 //  irz3->setSoilMoistureSensor(0x48, 2, 86); // i2c address, pin, % to run
 //  irz3->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 3 %s setup done", irz3->name); 
@@ -142,8 +141,8 @@ void setup() {
   IrrigationRelay * irz4 = new IrrigationRelay(4, &mcp);
   irz4->setBackwards();
   irz4->setup("hill");
-  irz4->setStartTime(8,0); // hour, minute
-  irz4->setStartTime(16,0); // hour, minute
+//  irz4->setStartTime(8,0); // hour, minute
+//  irz4->setStartTime(16,0); // hour, minute
   irz4->setRuntime(20*60);
 //  irz4->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
 //  irz4->setSoilMoistureLimits(430, 179); // dry, wet
@@ -168,9 +167,9 @@ void setup() {
   IrrigationRelay * irz6 = new IrrigationRelay(2, &mcp);
   irz6->setBackwards();
   irz6->setup("back_fence");
-  irz6->setStartTime(9,0); // hour, minute
-  irz6->setStartTime(19,0); // hour, minute
-  irz6->setRuntime(20*60);
+//  irz6->setStartTime(9,0); // hour, minute
+//  irz6->setStartTime(19,0); // hour, minute
+//  irz6->setRuntime(20*60);
 //  irz6->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
 //  irz6->setSoilMoistureLimits(430, 179); // dry, wet
   syslog.logf(LOG_INFO, "irrigation Zone 6 %s setup done", irz6->name); 
@@ -180,8 +179,8 @@ void setup() {
   IrrigationRelay * irz7 = new IrrigationRelay(1, &mcp);
   irz7->setBackwards();
   irz7->setup("north_fence");
-  irz7->setStartTime(9,20); // hour, minute
-  irz7->setStartTime(19,20); // hour, minute
+//  irz7->setStartTime(9,20); // hour, minute
+//  irz7->setStartTime(19,20); // hour, minute
   irz7->setRuntime(15*60);
 //  irz7->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
 //  irz7->setSoilMoistureLimits(430, 179); // dry, wet

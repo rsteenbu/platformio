@@ -3,7 +3,6 @@
 #define MYTZ TZ_America_Los_Angeles
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
-#include <coredecls.h>                  // settimeofday_cb()
 #include <TZ.h>
 #include <Array.h>
 #include <Wire.h>
