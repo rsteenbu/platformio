@@ -8,73 +8,18 @@
 #include <TimeLib.h>
 
 #include <my_ntp.h>
-
-
-//const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
-//byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
-
-class teensyRelay {
-  int onVal = HIGH;
-  int offVal = LOW;
-
-  protected:
-    int pin;
-
-  public:
-    //variables
-    bool on = false;
-    char* name;
-
-    //constructors
-    teensyRelay (int a): pin(a) {}
-
-    int status() {
-      if (on) {
-	return 1;
-      } else {
-	return 0;
-      }
-    }
-    void setup(const char* a) {
-      name = new char[strlen(a)+1];
-      strcpy(name,a);
-
-      pinMode(pin, OUTPUT);
-      digitalWrite(pin, offVal); // start off
-    }
-    void switchOn() {
-      if (!on) {
-        digitalWrite(pin, onVal);
-        on = true;
-      }
-    }
-    void switchOff() {
-      if (on) {
-        digitalWrite(pin, offVal);
-        on = false;
-      }
-    }
-    const char* state() {
-      if (on) {
-	return "on";
-      } else { 
-	return "off";
-      }
-    }
-};
+#include <teensy_relay.h>
 
 teensyRelay * XmasTree = new teensyRelay(22);
 
 WiFiWebServer server(80);
 WiFiUdpSender udpClient;
+WiFiUDP Udp;
 
 IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
-//const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
-//byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
 NTP ntp;
 
 int debug = 0;
-char msg[40];
 
 // This device info
 const char* APP_NAME = "system";
@@ -87,8 +32,6 @@ TimeChangeRule usPST = {"PST", Second, Sun, Mar, 2, -420};  // Daylight time = U
 TimeChangeRule usPDT = {"PDT", First, Sun, Nov, 2, -480};   // Standard time = UTC - 8 hours
 Timezone usPacific(usPST, usPDT);
 
-// A UDP instance to let us send and receive packets over UDP
-WiFiUDP Udp;
 
 void setup() {
   Serial1.begin(115200);
@@ -137,9 +80,9 @@ void setup() {
   if (ntp.epoch == 0) {
     Serial.println("Setting NTP time failed");
   } else {
-    time_t eastern = usPacific.toLocal(ntp.epoch);
-    Teensy3Clock.set(eastern); // set the RTC
-    setTime(eastern);
+    time_t pacific = usPacific.toLocal(ntp.epoch);
+    Teensy3Clock.set(pacific); // set the RTC
+    setTime(pacific);
   }
 }
 
@@ -162,8 +105,6 @@ void handleStatus() {
   char timeString[20];
   sprintf(timeString, "%02d/%02d/%02d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
   doc["time"] = timeString;
-
-  //breakTime(time, &tm);
 
   size_t jsonDocSize = measureJsonPretty(doc);
   if (jsonDocSize > JSON_SIZE) {
