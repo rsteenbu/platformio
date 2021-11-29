@@ -1,104 +1,44 @@
-#include "defines.h"
-
+#define USE_WIFI_NINA false
+#define USE_WIFI_CUSTOM true
 #define USE_OCTOWS2811
-#include <OctoWS2811.h>
-#include "FastLED.h"
 #include <WiFiEspAT.h>
-#define AT_BAUD_RATE 115200
 #include <WiFiWebServer.h>
 #include <Syslog.h>
 #include <ArduinoJson.h>
-
+#include <Timezone.h> 
 #include <TimeLib.h>
+
+#include <OctoWS2811.h>
+#include "FastLED.h"
+
+#include <my_ntp.h>
+#include <teensy_relay.h>
+
+#define JSON_SIZE 200
+#define NUM_LEDS_PER_STRIP 100
+#define NUM_STRIPS 8
+#define NUM_LEDS      NUM_LEDS_PER_STRIP * NUM_STRIPS
+#define VOLTS          12
+#define MAX_MA       4000
+
+int debug = 0;
+teensyRelay * XmasTree = new teensyRelay(22);
 
 WiFiWebServer server(80);
 WiFiUdpSender udpClient;
-
-char timeServer[]         = "time.nist.gov";  // NTP server
-unsigned int localPort    = 2390;             // local port to listen for UDP packets
-const int NTP_PACKET_SIZE = 48;       // NTP timestamp is in the first 48 bytes of the message
-const int UDP_TIMEOUT     = 2000;     // timeout in miliseconds to wait for an UDP packet to arrive
-byte packetBuffer[NTP_PACKET_SIZE];   // buffer to hold incoming and outgoing packets
 WiFiUDP Udp;
 
-int debug = 0;
-char msg[40];
+IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
+NTP ntp;
 
 // This device info
 const char* APP_NAME = "octoWS2811";
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
-#if defined(FASTLED_VERSION) && (FASTLED_VERSION < 3001000)
-#warning "Requires FastLED 3.1 or later; check github for latest code."
-#endif
-
-#define JSON_SIZE 200
-#define NUM_LEDS_PER_STRIP 100
-#define NUM_STRIPS 8
-
-#define NUM_LEDS      NUM_LEDS_PER_STRIP * NUM_STRIPS
-#define VOLTS          12
-#define MAX_MA       4000
-
-//  TwinkleFOX: Twinkling 'holiday' lights that fade in and out.
-//  Colors are chosen from a palette; a few palettes are provided.
-//
-//  This December 2015 implementation improves on the December 2014 version
-//  in several ways:
-//  - smoother fading, compatible with any colors and any palettes
-//  - easier control of twinkle speed and twinkle density
-//  - supports an optional 'background color'
-//  - takes even less RAM: zero RAM overhead per pixel
-//  - illustrates a couple of interesting techniques (uh oh...)
-//
-//  The idea behind this (new) implementation is that there's one
-//  basic, repeating pattern that each pixel follows like a waveform:
-//  The brightness rises from 0..255 and then falls back down to 0.
-//  The brightness at any given point in time can be determined as
-//  as a function of time, for example:
-//    brightness = sine( time ); // a sine wave of brightness over time
-//
-//  So the way this implementation works is that every pixel follows
-//  the exact same wave function over time.  In this particular case,
-//  I chose a sawtooth triangle wave (triwave8) rather than a sine wave,
-//  but the idea is the same: brightness = triwave8( time ).  
-//  
-//  Of course, if all the pixels used the exact same wave form, and 
-//  if they all used the exact same 'clock' for their 'time base', all
-//  the pixels would brighten and dim at once -- which does not look
-//  like twinkling at all.
-//
-//  So to achieve random-looking twinkling, each pixel is given a 
-//  slightly different 'clock' signal.  Some of the clocks run faster, 
-//  some run slower, and each 'clock' also has a random offset from zero.
-//  The net result is that the 'clocks' for all the pixels are always out 
-//  of sync from each other, producing a nice random distribution
-//  of twinkles.
-//
-//  The 'clock speed adjustment' and 'time offset' for each pixel
-//  are generated randomly.  One (normal) approach to implementing that
-//  would be to randomly generate the clock parameters for each pixel 
-//  at startup, and store them in some arrays.  However, that consumes
-//  a great deal of precious RAM, and it turns out to be totally
-//  unnessary!  If the random number generate is 'seeded' with the
-//  same starting value every time, it will generate the same sequence
-//  of values every time.  So the clock adjustment parameters for each
-//  pixel are 'stored' in a pseudo-random number generator!  The PRNG 
-//  is reset, and then the first numbers out of it are the clock 
-//  adjustment parameters for the first pixel, the second numbers out
-//  of it are the parameters for the second pixel, and so on.
-//  In this way, we can 'store' a stable sequence of thousands of
-//  random clock adjustment parameters in literally two bytes of RAM.
-//
-//  There's a little bit of fixed-point math involved in applying the
-//  clock speed adjustments, which are expressed in eighths.  Each pixel's
-//  clock speed ranges from 8/8ths of the system clock (i.e. 1x) to
-//  23/8ths of the system clock (i.e. nearly 3x).
-//
-//  On a basic Arduino Uno or Leonardo, this code can twinkle 300+ pixels
-//  smoothly at over 50 updates per seond.
-//
-//  -Mark Kriegsman, December 2015
+// US Pacific Time Zone 
+TimeChangeRule usPST = {"PST", Second, Sun, Mar, 2, -420};  // Daylight time = UTC - 7 hours
+TimeChangeRule usPDT = {"PDT", First, Sun, Nov, 2, -480};   // Standard time = UTC - 8 hours
+Timezone usPacific(usPST, usPDT);
 
 CRGBArray<NUM_LEDS> leds;
 
@@ -136,48 +76,27 @@ CRGB gBackgroundColor = CRGB::Black;
 // incandescent bulbs change color as they get dim down.
 #define COOL_LIKE_INCANDESCENT 1
 
-
 CRGBPalette16 gCurrentPalette;
 CRGBPalette16 gTargetPalette;
 
 void setup() {
-//  Serial.begin();
-  Serial.println("This may be sent before your PC is able to receive");
-  while (!Serial) {
-    // wait for Arduino Serial Monitor to be ready
-  }
-  Serial.println("This line will definitely appear in the serial monitor");
+  XmasTree->setup("xmastree");
 
-  Serial1.begin(AT_BAUD_RATE);
+  Serial1.begin(115200);
   WiFi.init(Serial1);
-  WiFi.disconnect(); // to clear the way. not persistent
-  WiFi.setPersistent(); // set the following WiFi connection as persistent
-  WiFi.endAP(); // to disable default automatic start of persistent AP at startup
+  WiFi.setHostname(DEVICE_HOSTNAME);
 
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("Communication with WiFi module failed!");
     // don't continue
     while (true);
   }
-
-  Serial.println();
-  Serial.print("Attempting to connect to SSID: ");
-  Serial.println(WIFI_SSID);
-
-  if (!WiFi.setHostname(DEVICE_HOSTNAME)) {
-    Serial.println("Hostname failed to configure");
+  // waiting for connection to Wifi network set with the SetupWiFiConnection sketch
+  Serial.println("Waiting for connection to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print('.');
   }
-
-  int status = WiFi.begin(WIFI_SSID, WIFI_PASS);
-  if (status == WL_CONNECTED) {
-    Serial.println();
-    Serial.println("Connected to WiFi network.");
-  } else {
-    WiFi.disconnect(); // remove the WiFi connection
-    Serial.println();
-    Serial.println("Connection to WiFi network failed.");
-  }
-
   Serial.println();
 
   // start the http webserver
@@ -186,16 +105,38 @@ void setup() {
   IPAddress ip = WiFi.localIP();
   syslog.logf(LOG_INFO, "Alive! at IP: %d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
 
-
-  //Udp.begin(localPort);
-  //Serial.println(Udp.localPort());
-  //Serial.println("waiting for sync");
-  //setSyncProvider(getNtpTime);
-  //setSyncInterval(300);
-
   server.on("/status", handleStatus);
+  server.on("/tree", handleTree);
 
-  delay( 3000 ); //safety startup delay
+  Udp.begin(2390);
+  // wait to see if a reply is available
+  delay(1000);
+
+  int tries = 0;
+  while (! ntp.setup(timeServer, Udp) || tries++ < 5) {
+    if (debug) {
+      syslog.logf(LOG_INFO, "Getting NTP time failed, try %d", tries);
+    }
+    delay(1000);
+  }
+
+  // Set the system time from the NTP epoch
+  setSyncProvider(getTeensy3Time);
+  delay(100);
+  if (timeStatus()!= timeSet) {
+    Serial.println("Unable to sync with the RTC");
+  } else {
+    Serial.println("RTC has set the system time");
+  }
+
+  if (ntp.epoch == 0) {
+    syslog.log(LOG_INFO, "Setting NTP time failed");
+  } else {
+    time_t pacific = usPacific.toLocal(ntp.epoch);
+    Teensy3Clock.set(pacific); // set the RTC
+    setTime(pacific);
+  }
+
   LEDS.addLeds<OCTOWS2811>(leds, NUM_LEDS_PER_STRIP);
   LEDS.setBrightness(32);
 //  FastLED.setMaxPowerInVoltsAndMilliamps( VOLTS, MAX_MA);
@@ -204,15 +145,25 @@ void setup() {
 
 }
 
+time_t getTeensy3Time() {
+  return Teensy3Clock.get();
+}
+
 void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
+  JsonObject switches = doc.createNestedObject("switches");
+  JsonObject sensors = doc.createNestedObject("sensors");
 
+  switches[XmasTree->name]["state"] = XmasTree->state();
+  int lightLevel = 0;
+  lightLevel = analogRead(A9);
+  sensors["lightLevel"] = lightLevel;
   doc["debug"] = debug;
 
-  //char timeString[20];
   // 11/16/21 20:17:07
-
-  //breakTime(time, &tm);
+  char timeString[20];
+  sprintf(timeString, "%02d/%02d/%02d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
+  doc["time"] = timeString;
 
   size_t jsonDocSize = measureJsonPretty(doc);
   if (jsonDocSize > JSON_SIZE) {
@@ -226,24 +177,39 @@ void handleStatus() {
   }
 }
 
-
-void loop()
-{
-  server.handleClient();
-
-  EVERY_N_SECONDS( SECONDS_PER_PALETTE ) { 
-    chooseNextColorPalette( gTargetPalette ); 
+void handleTree() {
+  if (server.arg("state") == "status") {
+    server.send(200, "text/plain", (XmasTree->on ? "1" : "0"));
+  } else if (server.arg("state") == "on") {
+    XmasTree->switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    XmasTree->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
+    server.send(200, "text/plain");
+  } else {
+    server.send(404, "text/plain", "ERROR: uknonwn light command");
   }
-
-  EVERY_N_MILLISECONDS( 10 ) {
-    nblendPaletteTowardPalette( gCurrentPalette, gTargetPalette, 12);
-  }
-
-  drawTwinkles( leds);
-  
-  FastLED.show();
 }
 
+void loop() {
+  server.handleClient();
+
+  if (XmasTree->status()) {
+    EVERY_N_SECONDS( SECONDS_PER_PALETTE ) { 
+      chooseNextColorPalette( gTargetPalette ); 
+    }
+
+    EVERY_N_MILLISECONDS( 10 ) {
+      nblendPaletteTowardPalette( gCurrentPalette, gTargetPalette, 12);
+    }
+
+    drawTwinkles( leds);
+
+    FastLED.show();
+  }
+}
 
 //  This function loops over each pixel, calculates the 
 //  adjusted 'clock' that this pixel should use, and calls 
@@ -488,28 +454,3 @@ void chooseNextColorPalette( CRGBPalette16& pal)
   pal = *(ActivePaletteList[whichPalette]);
 }
 
-void sendNTPpacket(char *ntpSrv)
-{
-  // set all bytes in the buffer to 0
-  memset(packetBuffer, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-
-  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
-  packetBuffer[1] = 0;     // Stratum, or type of clock
-  packetBuffer[2] = 6;     // Polling Interval
-  packetBuffer[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBuffer[12]  = 49;
-  packetBuffer[13]  = 0x4E;
-  packetBuffer[14]  = 49;
-  packetBuffer[15]  = 52;
-
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  Udp.beginPacket(ntpSrv, 123); //NTP requests are to port 123
-
-  Udp.write(packetBuffer, NTP_PACKET_SIZE);
-
-  Udp.endPacket();
-}
