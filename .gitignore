@@ -2,4 +2,4 @@
 *.swp
 LightStrip-FASTLED/lib/OctoWS2811/
 common_pio_config.ini
-teensy-lib/
+storage-lib/
