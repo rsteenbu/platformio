@@ -6,6 +6,13 @@
 #include <ArduinoJson.h>
 #include <Vector.h>
 
+#include <Timezone.h> 
+#include <TimeLib.h>
+#include <my_ntp.h>
+#include <teensy_relay.h>
+
+
+/*
 #include <my_relay.h>
 
 #include <time.h>                       // time() ctime()
@@ -14,6 +21,7 @@
 #include <TZ.h>
 
 #define MYTZ TZ_America_Los_Angeles
+*/
 
 // This device info
 #define APP_NAME "switch"
@@ -93,18 +101,22 @@ void handleDebug() {
 }
 
 void handleStatus() {
+  /*
   time_t now;
   now = time(nullptr);
+  */
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
 
   switches[lightSwitch->name]["state"] = lightSwitch->state();
   doc["debug"] = debug;
 
+  /*
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
   strftime (timeString,20,"%D %T",timeinfo);
   doc["time"] = timeString;
+  */
 
   size_t jsonDocSize = measureJsonPretty(doc);
   if (jsonDocSize > JSON_SIZE) {
