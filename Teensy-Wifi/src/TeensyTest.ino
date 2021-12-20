@@ -17,7 +17,6 @@ WiFiWebServer server(80);
 WiFiUdpSender udpClient;
 WiFiUDP Udp;
 
-IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 NTP ntp;
 
 // This device info
@@ -76,7 +75,7 @@ void setup() {
   delay(1000);
 
   int tries = 0;
-  while (! ntp.setup(timeServer, Udp) && tries++ < 5) {
+  while (! ntp.setup(Udp) && tries++ < 5) {
     if (debug) {
       syslog.logf(LOG_INFO, "Getting NTP time failed, try %d", tries);
     }
@@ -87,7 +86,8 @@ void setup() {
   }
 
   // Set the system time from the NTP epoch
-  setSyncProvider(getTeensy3Time);
+  //setSyncInterval(300);
+  //setSyncProvider(getTeensy3Time);
   delay(100);
   if (timeStatus()!= timeSet) {
     Serial.println("Unable to sync with the RTC");
@@ -157,5 +157,6 @@ void handleTree() {
 void loop()
 {
   server.handleClient();
+
 }
 

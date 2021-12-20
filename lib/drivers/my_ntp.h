@@ -4,10 +4,11 @@
 #define USE_WIFI_NINA false
 #define USE_WIFI_CUSTOM true
 
+IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
+
 class NTP {
   private:
-
-    void sendNTPpacket(IPAddress& timeServer, WiFiUDP& Udp) {
+    void sendNTPpacket(WiFiUDP& Udp) {
       // set all bytes in the buffer to 0
       memset(packetBuffer, 0, 48);
 
@@ -64,8 +65,8 @@ class NTP {
     byte packetBuffer[48]; //buffer to hold incoming and outgoing packets
 
     // public functions
-    bool setup(IPAddress& timeServer, WiFiUDP& Udp) {
-      sendNTPpacket(timeServer, Udp); // send an NTP packet to a time server
+    bool setup(WiFiUDP& Udp) {
+      sendNTPpacket(Udp); // send an NTP packet to a time server
       // wait to see if a reply is available
       delay(1000);
       epoch = receiveNTPpacket(Udp);
