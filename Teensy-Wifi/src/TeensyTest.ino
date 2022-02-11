@@ -86,8 +86,8 @@ void setup() {
   }
 
   // Set the system time from the NTP epoch
-  //setSyncInterval(300);
-  //setSyncProvider(getTeensy3Time);
+  setSyncInterval(300);
+  setSyncProvider(getTeensy3Time);
   delay(100);
   if (timeStatus()!= timeSet) {
     Serial.println("Unable to sync with the RTC");
