@@ -84,11 +84,15 @@ class Relay {
 
       if (i2cPins) {
 	(*mcp).pinMode(pin, OUTPUT);
-	(*mcp).digitalWrite(pin,offVal);
+	(*mcp).digitalWrite(pin, offVal); // start off
       } else {
 	pinMode(pin, OUTPUT);
 	digitalWrite(pin, offVal); // start off
       }
+      
+      // iternate through one on off cycle to work the kinks out
+      internalOn(); internalOff();
+
       configTime(MYTZ, "pool.ntp.org");
       onTime = offTime = time(nullptr);
       strcpy(prettyOnTime,"None");
@@ -278,6 +282,7 @@ class TimerRelay: public Relay {
       int currMinute = timeinfo->tm_min;
       int currSecond = timeinfo->tm_sec;
 
+      // if there are no start times set, just return
       if ( startTimesOfDay.size() == 0 ) {
         return;
       }
@@ -416,6 +421,14 @@ class TimerRelay: public Relay {
 
    void setSpecificDayOn(int n) {
      runDays[n] = 1;
+   }
+
+   void getWeekSchedule(char weekSchedule[8]) {
+      for ( int n=0 ; n<7 ; n++ ) {
+        if (runDays[n] == 0) { weekSchedule[n] = '_'; }
+	else { weekSchedule[n] = 'R'; }
+      }
+      weekSchedule[7] = '\0';
    }
 
    int checkDayToRun(int weekDay) { 
