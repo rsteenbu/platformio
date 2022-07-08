@@ -1,5 +1,6 @@
 .pio
 *.swp
+.DS_Store
 LightStrip-FASTLED/lib/OctoWS2811/
 common_pio_config.ini
 storage-lib/
