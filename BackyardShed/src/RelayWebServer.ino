@@ -97,112 +97,36 @@ void setup() {
   // Soil Moisture Sensor addresses: 0x48, 0x49, 0x4a, 0x4b
   //TODO: add starttimes to status
 
-  // Pots and Plants Irrigation
-  IrrigationRelay * irz1 = new IrrigationRelay(7, &mcp);
-  irz1->setup("patio_pots");
-  irz1->setBackwards();
-  irz1->setRuntime(3*60);
-  irz1->setStartTime(7,0); // hour, minute
-  irz1->setEveryDayOn();
-//  irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
-//  irz1->setSoilMoistureLimits(660, 218); // dry, wet
-  irz1->switchOn();
-  irz1->switchOff();
-  syslog.logf(LOG_INFO, "irrigation Zone 1 %s setup done", irz1->name);
-  IrrigationZones.push_back(irz1);
+// name,          address, backwards, startTimeFromString, runTimeMinutes, Schedule
+// "patio_pots",  7,       true,      "7:00",              3,            , '1111111'
+// "cottage",     3,       true,      "7:15",              3,            , '1111111'
 
-  // Cottage
-  IrrigationRelay * irz2 = new IrrigationRelay(6, &mcp);
-  irz2->setup("cottage");
-  irz2->setBackwards();
-  irz2->setStartTime(7,15); // hour, minute
-  irz2->setRuntime(15*60);
-  irz2->setEveryOtherDayOn();
-//  irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
-  irz2->switchOn();
-  irz2->switchOff();
-  syslog.logf(LOG_INFO, "irrigation Zone 2 %s setup done", irz2->name); 
-  IrrigationZones.push_back(irz2);
+  //maybe the mcp reference can be passed just once?
+  IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, &mcp);
+  IrrigationRelay * irz2 = new IrrigationRelay("cottage",     6, true, "7:15", 15, &mcp);
+  IrrigationRelay * irz3 = new IrrigationRelay("south_fence", 5, true, "7:30",  5, &mcp);
+  IrrigationRelay * irz4 = new IrrigationRelay("hill",        4, true, "7:45", 15, &mcp);
+  IrrigationRelay * irz5 = new IrrigationRelay("back_fence",  2, true, "7:45", 15, &mcp);
+  IrrigationRelay * irz6 = new IrrigationRelay("north_fence", 1, true, "8:15", 15, &mcp);
+// IrrigationRelay * irz7 = new IrrigationRelay("garden",      3, true, "6:00", 8, &mcp);
+//  irz7->setStartTimeFromString(                                         "10:00");
+//  irz7->setStartTimeFromString(                                         "14:00");
+//  irz7->setStartTimeFromString(                                         "18:00");
+  irz1->setup();                             IrrigationZones.push_back(irz1);
+  irz2->setup(); irz2->setEveryOtherDayOn(); IrrigationZones.push_back(irz2);
+  irz3->setup();                             IrrigationZones.push_back(irz3);
+  irz4->setup(); irz4->setEveryOtherDayOn(); IrrigationZones.push_back(irz4);
+  irz5->setup(); irz5->setEveryOtherDayOn(); IrrigationZones.push_back(irz5);
+  irz6->setup(); irz6->setEveryOtherDayOn(); IrrigationZones.push_back(irz6);
 
-  // Hill
-  IrrigationRelay * irz3 = new IrrigationRelay(4, &mcp);
-  irz3->setBackwards();
-  irz3->setup("hill");
-  irz3->setStartTime(7,45); // hour, minute
-  irz3->setRuntime(15*60);
-  irz3->setEveryOtherDayOn();
-//  irz3->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
-  irz3->switchOn();
-  irz3->switchOff();
-  syslog.logf(LOG_INFO, "irrigation Zone 3 %s setup done", irz3->name); 
-  IrrigationZones.push_back(irz3);
-
-  // South Fence
-  IrrigationRelay * irz4 = new IrrigationRelay(5, &mcp);
-  irz4->setBackwards();
-  irz4->setup("south_fence");
-  irz4->setRuntime(5*60);
-  irz4->setEveryDayOn();
-  irz4->setStartTime(7,30); // hour, minute
-  irz4->setStartTime(15,30); // hour, minute
-//  irz4->setSoilMoistureSensor(0x48, 2, 86); // i2c address, pin, % to run
-  irz4->switchOn();
-  irz4->switchOff();
-  syslog.logf(LOG_INFO, "irrigation Zone 4 %s setup done", irz4->name); 
-  IrrigationZones.push_back(irz4);
-
-  // Back fence
-  IrrigationRelay * irz5 = new IrrigationRelay(2, &mcp);
-  irz5->setBackwards();
-  irz5->setup("back_fence");
-  irz5->setStartTime(7,45); // hour, minute
-  irz5->setRuntime(15*60);
-  irz5->setEveryOtherDayOn();
-//  irz5->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
-  irz5->switchOn();
-  irz5->switchOff();
-  syslog.logf(LOG_INFO, "irrigation Zone 5 %s setup done", irz5->name); 
-  IrrigationZones.push_back(irz5);
-
-  // North Fence
-  IrrigationRelay * irz6 = new IrrigationRelay(1, &mcp);
-  irz6->setBackwards();
-  irz6->setup("north_fence");
-  irz6->setStartTime(8,15); // hour, minute
-  irz6->setRuntime(15*60);
-  irz6->setEveryOtherDayOn();
-//  irz6->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
-//  irz6->setSoilMoistureLimits(430, 179); // dry, wet
-  irz6->switchOn();
-  irz6->switchOff();
-  syslog.logf(LOG_INFO, "irrigation Zone 6 %s setup done", irz6->name); 
-  IrrigationZones.push_back(irz6);
-
-  // Garden
-  IrrigationRelay * irz7 = new IrrigationRelay(3, &mcp);
-  irz7->setBackwards();
-  irz7->setup("garden");
-  // Disabled 11/21
-//  irz7->setStartTime(6,0); // hour, minute
-//  irz7->setStartTime(10,0); // hour, minute
-//  irz7->setStartTime(14,0); // hour, minute
-//  irz7->setStartTime(18,0); // hour, minute
-//  irz7->setRuntime(8*60);
-//  irz7->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
-//  irz7->setSoilMoistureLimits(430, 179); // dry, wet
-  irz7->switchOn();
-  irz7->switchOff();
-  syslog.logf(LOG_INFO, "irrigation Zone 7 %s setup done", irz7->name); 
-  IrrigationZones.push_back(irz7);
-
-  // Zone8
-  IrrigationRelay * irz8 = new IrrigationRelay(0, &mcp);
-  irz8->setBackwards();
-  irz8->setup("zone8");
-//  irz8->setSoilMoistureSensor(0x4b, 0, 86); // i2c address, pin, % to run
-//  irz8->setSoilMoistureLimits(430, 179); // dry, wet
-  syslog.logf(LOG_INFO, "irrigation Zone 8 %s setup done", irz8->name); 
-  IrrigationZones.push_back(irz8);
+  // PatioPots irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
+  // Cottage irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
+  // Hill irz3->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
+  // South Fence irz4->setSoilMoistureSensor(0x48, 2, 86); // i2c address, pin, % to run
+  // Back fence irz5->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
+  // North Fence irz6->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
+  // Garden irz7->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
+  // Zone8 irz8->setSoilMoistureSensor(0x4b, 0, 86); // i2c address, pin, % to run
 
   // Start the server
   server.on("/debug", handleDebug);
@@ -213,6 +137,7 @@ void setup() {
   server.on("/status", handleStatus);
 
   server.begin();
+  Serial.println("End of setup");
 }
 
 void handleDebug() {
@@ -337,32 +262,32 @@ void handleIrrigation() {
     if (server.arg("zone") == relay->name) {
       matchFound = true;
       if (server.arg("override") == "true") {
-	relay->setScheduleOverride(true);
-	syslog.logf(LOG_INFO, "Schedule disabled for irrigation zone %s on by API request", relay->name);
-	server.send(200, "text/plain");
-	return;
+	      relay->setScheduleOverride(true);
+	      syslog.logf(LOG_INFO, "Schedule disabled for irrigation zone %s on by API request", relay->name);
+	      server.send(200, "text/plain");
+	      return;
       } else if (server.arg("override") == "false") {
-	relay->setScheduleOverride(false);
-	syslog.logf(LOG_INFO, "Schedule enabled for irrigation zone %s on by API request", relay->name);
-	server.send(200, "text/plain");
-	return;
+	      relay->setScheduleOverride(false);
+	      syslog.logf(LOG_INFO, "Schedule enabled for irrigation zone %s on by API request", relay->name);
+	      server.send(200, "text/plain");
+	      return;
       } else if (server.arg("state") == "status") {
 	server.send(200, "text/plain", relay->status() ? "1" : "0");
 	return;
       } else if (server.arg("state") == "on") {
-	relay->switchOn();
-	syslog.logf(LOG_INFO, "Turned irrigation zone %s on by API request for %ds", relay->name, relay->runTime);
-	server.send(200, "text/plain");
-	return;
+	      relay->switchOn();
+	      syslog.logf(LOG_INFO, "Turned irrigation zone %s on by API request for %ds", relay->name, relay->runTime);
+	      server.send(200, "text/plain");
+	      return;
       } else if (server.arg("state") == "off") {
-	relay->switchOff();
-	syslog.logf(LOG_INFO, "Turned irrigation zone %s off by API request", relay->name);
-	server.send(200, "text/plain");
-	return;
+	      relay->switchOff();
+	      syslog.logf(LOG_INFO, "Turned irrigation zone %s off by API request", relay->name);
+	      server.send(200, "text/plain");
+	      return;
       } else {
-	char msg[40];
-	sprintf(msg, "ERROR: state command not specified for %s", relay->name);
-	server.send(404, "text/plain", msg);
+	      char msg[40];
+	      sprintf(msg, "ERROR: state command not specified for %s", relay->name);
+	      server.send(404, "text/plain", msg);
       }
     }
   }

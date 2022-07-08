@@ -23,9 +23,9 @@ class Relay {
       if (!on) {
         i2cPins ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
         on = true;
-	onTime = time(nullptr);
-	struct tm *timeinfo = localtime(&onTime);
-	strftime (prettyOnTime,18,"%D %T",timeinfo);
+	      onTime = time(nullptr);
+        struct tm *timeinfo = localtime(&onTime);
+	      strftime (prettyOnTime,18,"%D %T",timeinfo);
       }
     }
 
@@ -33,9 +33,9 @@ class Relay {
       if (on) {
         i2cPins ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
         on = false;
-	offTime = time(nullptr);
-	struct tm *timeinfo = localtime(&offTime);
-	strftime (prettyOffTime,18,"%D %T",timeinfo);
+	      offTime = time(nullptr);
+	      struct tm *timeinfo = localtime(&offTime);
+	      strftime (prettyOffTime,18,"%D %T",timeinfo);
       }
     }
 
@@ -72,22 +72,25 @@ class Relay {
 
     int status() {
       if (on) {
-	return 1;
+	      return 1;
       } else {
-	return 0;
+	      return 0;
       }
     }
 
     void setup(const char* a) {
       name = new char[strlen(a)+1];
       strcpy(name,a);
+      this->setup();
+    }
 
+    void setup() {
       if (i2cPins) {
-	(*mcp).pinMode(pin, OUTPUT);
-	(*mcp).digitalWrite(pin, offVal); // start off
+	      (*mcp).pinMode(pin, OUTPUT);
+	      (*mcp).digitalWrite(pin, offVal); // start off
       } else {
-	pinMode(pin, OUTPUT);
-	digitalWrite(pin, offVal); // start off
+	      pinMode(pin, OUTPUT);
+	      digitalWrite(pin, offVal); // start off
       }
       
       // iternate through one on off cycle to work the kinks out
@@ -335,6 +338,10 @@ class TimerRelay: public Relay {
       initialRunTime = a;
     }
 
+    void setRuntimeMinutes(int a) {
+      initialRunTime = a*60;
+    }
+
     int getSecondsLeft() {
       return secondsLeft;
     }
@@ -357,49 +364,61 @@ class TimerRelay: public Relay {
       Relay::switchOff();
     } 
 
-    bool setStartTimeFromString(char *a) {
+    bool setStartTimeFromString(const char *a) {
       if (  startTimesOfDay.full() ) { return false; }
 
       bool processMinutes = false;
-      char hours[2];
-      char minutes[2];
+      char hours[3];
+      char minutes[3];
       int n = 0;
-      for (int i = 0; a[i] != '\0'; i++){
-	if (! processMinutes) {
-	  hours[n++] = a[i];
+      for (int i = 0; a[i] != '\0'; i++)
+      {
+        if (!processMinutes)
+        {
+          hours[n++] = a[i];
 
-	  if (a[i] == ':') {
-	    processMinutes = true;
-	    n = 0;
-	    continue;
-	  }
-	} else {
-	  minutes[n++] = a[i];
-	}
+          if (a[i] == ':')
+          {
+            processMinutes = true;
+            n = 0;
+            continue;
+          }
+        }
+        else
+        {
+          minutes[n++] = a[i];
+        }
       }
       int startMinuteOfDay = atoi(hours) * 60 + atoi(minutes);
       startTimesOfDay.push_back(startMinuteOfDay);
       return true;
     }
 
-    bool setStartTime(int a, int b) {
+    bool setStartTime(int a, int b)
+    {
       int startMinuteOfDay = a * 60 + b;
-      if ( ! startTimesOfDay.full() ) {
-	startTimesOfDay.push_back(startMinuteOfDay);
-	return true;
+      if (!startTimesOfDay.full())
+      {
+        startTimesOfDay.push_back(startMinuteOfDay);
+        return true;
       }
       return false;
     }
 
-   void setEveryOtherDayOn() {
-     for ( int n=0 ; n<7 ; n++ ) {
-       if (n % 2 == 0) {
-	 runDays[n] = 1;
-       } else {
-	 runDays[n] = 0;
-       }
-     }
-   }
+    void setEveryOtherDayOn()
+    {
+      for (int n = 0; n < 7; n++)
+      {
+        if (n % 2 == 0)
+        {
+          runDays[n] = 1;
+        }
+        else
+        {
+          runDays[n] = 0;
+        }
+      }
+    }
 
    void setEveryDayOn() {
      for ( int n=0 ; n<7 ; n++ ) {
@@ -521,6 +540,15 @@ class IrrigationRelay: public TimerRelay {
     IrrigationRelay (int a): TimerRelay(a) { }
     IrrigationRelay (int a, Adafruit_MCP23X17* b): TimerRelay(a, b) { }
 
+    //"patio_pots",  7,       true,      "7:00",              3,            , '1111111'
+    IrrigationRelay (const char* a, int b, bool c, const char* d, int e, Adafruit_MCP23X17* f): TimerRelay(b, f) { 
+      name = new char[strlen(a)+1];
+      strcpy(name,a);
+      if (c) { this->setBackwards(); }
+      this->setStartTimeFromString(d);
+      this->setRuntimeMinutes(e);
+    }
+
     // turn on the soilMoisture check at soilMoisturePercentageToRun
     void setSoilMoistureSensor(int a, int b) {
       soilMoistureSensor = true;
@@ -545,16 +573,16 @@ class IrrigationRelay: public TimerRelay {
       double calibratedSoilMoistureLevel = soilMoistureLevel;
 
       if (i2cSoilMoistureSensor) {
-	soilMoistureLevel = ads.readADC_SingleEnded(soilPin);
+        soilMoistureLevel = ads.readADC_SingleEnded(soilPin);
       } else {
-	soilMoistureLevel = analogRead(soilPin);
+        soilMoistureLevel = analogRead(soilPin);
       }
 
       if (calibratedSoilMoistureLevel > drySoilMoistureLevel) {
-	calibratedSoilMoistureLevel = drySoilMoistureLevel;
+        calibratedSoilMoistureLevel = drySoilMoistureLevel;
       }
       if (calibratedSoilMoistureLevel < wetSoilMoistureLevel) {
-	calibratedSoilMoistureLevel = wetSoilMoistureLevel;
+        calibratedSoilMoistureLevel = wetSoilMoistureLevel;
       }
       
       soilMoisturePercentage = 100 - (((calibratedSoilMoistureLevel - wetSoilMoistureLevel) / (drySoilMoistureLevel - wetSoilMoistureLevel)) * 100);
@@ -565,10 +593,13 @@ class IrrigationRelay: public TimerRelay {
     const char* state() {
       if (! soilDry) return "wet";
 
-      if (on) {
-	return "on";
-      } else { 
-	return "off";
+      if (on)
+      {
+        return "on";
+      }
+      else
+      {
+        return "off";
       }
     }
 
@@ -577,9 +608,10 @@ class IrrigationRelay: public TimerRelay {
       now = time(nullptr);
 
       //uptime the time left to run every second
-      if ( now != prevTime ) { 
-	setTimeLeftToRun();
-	setNextTimeToRun();
+      if (now != prevTime)
+      {
+        setTimeLeftToRun();
+        setNextTimeToRun();
       }
 
       // only process the rest every 5 seconds
@@ -589,35 +621,39 @@ class IrrigationRelay: public TimerRelay {
       if (soilMoistureSensor) checkSoilMoisture();
 
       // if we don't have runtime set, then just return
-      if ( initialRunTime == 0 ) { 
-	return false;
+      if (initialRunTime == 0)
+      {
+        return false;
       }
 
       // if we're on, turn it off if it's been more than than the time to run or if it's started raining
 	// if the scheduleOverride is on, turn it off if the timer expires and resume normal
 	// operation
-      if ( on && isTimeToStop() ) {
-	switchOff();
-	return true;
+      if (on && isTimeToStop())
+      {
+        switchOff();
+        return true;
       }
 
       if ( scheduleOverride ) return false;
 
       // if we're on it started raining, turn it off
       // but ignore the scheduleOveride and stay running if it's set
-      if ( on && !soilDry ) {
-	switchOff();
-	return true;
+      if (on && !soilDry)
+      {
+        switchOff();
+        return true;
       }
 
       // if we're not on, turn it on if it's the right day and time
       if ( !on && isTimeToStart() ) {
-	if ( ! soilDry ) {
-	  return false;
-	}
-	switchOn();
-	return true;
-      } 
+        if (!soilDry)
+        {
+          return false;
+        }
+        switchOn();
+        return true;
+      }
 
       return false;
     }
