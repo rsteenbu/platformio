@@ -541,12 +541,13 @@ class IrrigationRelay: public TimerRelay {
     IrrigationRelay (int a, Adafruit_MCP23X17* b): TimerRelay(a, b) { }
 
     //"patio_pots",  7,       true,      "7:00",              3,            , '1111111'
-    IrrigationRelay (const char* a, int b, bool c, const char* d, int e, Adafruit_MCP23X17* f): TimerRelay(b, f) { 
+    IrrigationRelay (const char* a, int b, bool c, const char* d, int e, bool f, Adafruit_MCP23X17* g): TimerRelay(b, g) { 
       name = new char[strlen(a)+1];
       strcpy(name,a);
       if (c) { this->setBackwards(); }
       this->setStartTimeFromString(d);
       this->setRuntimeMinutes(e);
+      if (f) { this->setEveryOtherDayOn(); }
     }
 
     // turn on the soilMoisture check at soilMoisturePercentageToRun

@@ -41,110 +41,21 @@ const int TX_PIN=1;
 const int RX_PIN=3;
 const int GPIO0_PIN=0;
 const int GPIO2_PIN=2;
-
 const int REED_PIN = 15;
 
 int debug = 0;
-
 StaticJsonDocument<200> doc;
-
 Adafruit_MCP23X17 mcp;
 Vector<IrrigationRelay*> IrrigationZones;
-
 IrrigationRelay * storage_array[8];
 
 ReedSwitch * shedDoor = new ReedSwitch(REED_PIN, &mcp);
-
-void setup() {
-  Serial.begin(115200);
-  Serial.println("Booting up");
-
-  // Connect to WiFi network
-  WiFi.mode(WIFI_STA);
-  WiFi.hostname(DEVICE_HOSTNAME);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  while (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Connecting to network...");
-    delay(500);
-  }
-
-  char msg[40];
-  sprintf(msg, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
-  Serial.println(msg);
-  syslog.log(LOG_INFO, msg);
-
-  // Setup OTA Update
-  ArduinoOTA.begin();
-
-  configTime(MYTZ, "pool.ntp.org");
-
-  // set I2C pins (SDA, SDL)
-  Wire.begin(GPIO0_PIN, GPIO2_PIN);
-  if (!mcp.begin_I2C()) {
-    syslog.log(LOG_INFO, "ERROR: MCP setup failed");
-  }
-
-  if ( ! veml.setup() ) {
-    syslog.log(LOG_INFO, "ERROR: veml setup failed");
-  }
-  
-  // setup the reed switch on the shed door
-  shedDoor->setup("shed_door");
-
-  IrrigationZones.setStorage(storage_array);
-
-  // Soil Moisture Sensor addresses: 0x48, 0x49, 0x4a, 0x4b
-  //TODO: add starttimes to status
-
-// name,          address, backwards, startTimeFromString, runTimeMinutes, Schedule
-// "patio_pots",  7,       true,      "7:00",              3,            , '1111111'
-// "cottage",     3,       true,      "7:15",              3,            , '1111111'
-
-  //maybe the mcp reference can be passed just once?
-  IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, &mcp);
-  IrrigationRelay * irz2 = new IrrigationRelay("cottage",     6, true, "7:15", 15, &mcp);
-  IrrigationRelay * irz3 = new IrrigationRelay("south_fence", 5, true, "7:30",  5, &mcp);
-  IrrigationRelay * irz4 = new IrrigationRelay("hill",        4, true, "7:45", 15, &mcp);
-  IrrigationRelay * irz5 = new IrrigationRelay("back_fence",  2, true, "7:45", 15, &mcp);
-  IrrigationRelay * irz6 = new IrrigationRelay("north_fence", 1, true, "8:15", 15, &mcp);
-// IrrigationRelay * irz7 = new IrrigationRelay("garden",      3, true, "6:00", 8, &mcp);
-//  irz7->setStartTimeFromString(                                         "10:00");
-//  irz7->setStartTimeFromString(                                         "14:00");
-//  irz7->setStartTimeFromString(                                         "18:00");
-  irz1->setup();                             IrrigationZones.push_back(irz1);
-  irz2->setup(); irz2->setEveryOtherDayOn(); IrrigationZones.push_back(irz2);
-  irz3->setup();                             IrrigationZones.push_back(irz3);
-  irz4->setup(); irz4->setEveryOtherDayOn(); IrrigationZones.push_back(irz4);
-  irz5->setup(); irz5->setEveryOtherDayOn(); IrrigationZones.push_back(irz5);
-  irz6->setup(); irz6->setEveryOtherDayOn(); IrrigationZones.push_back(irz6);
-
-  // PatioPots irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
-  // Cottage irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
-  // Hill irz3->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
-  // South Fence irz4->setSoilMoistureSensor(0x48, 2, 86); // i2c address, pin, % to run
-  // Back fence irz5->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
-  // North Fence irz6->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
-  // Garden irz7->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
-  // Zone8 irz8->setSoilMoistureSensor(0x4b, 0, 86); // i2c address, pin, % to run
-
-  // Start the server
-  server.on("/debug", handleDebug);
-  server.on("/irrigation", handleIrrigation);
-  server.on("/zones", handleZones);
-  server.on("/door", handleDoor);
-  server.on("/sensors", handleSensors);
-  server.on("/status", handleStatus);
-
-  server.begin();
-  Serial.println("End of setup");
-}
 
 void handleDebug() {
   if (server.arg("level") == "status") {
     char msg[40];
     sprintf(msg, "Debug level: %d", debug);
-    server.send(200, "text/plain", msg);
+    server.send(200, "text/plain",msg);
   } else if (server.arg("level") == "0") {
     syslog.log(LOG_INFO, "Debug level 0");
     debug = 0;
@@ -300,6 +211,87 @@ void handleIrrigation() {
 
   server.send(404, "text/plain", "ERROR: Unknown irrigation command");
 }
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("Booting up");
+
+  // Connect to WiFi network
+  WiFi.mode(WIFI_STA);
+  WiFi.hostname(DEVICE_HOSTNAME);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.println("Connecting to network...");
+    delay(500);
+  }
+
+  char msg[40];
+  sprintf(msg, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
+  Serial.println(msg);
+  syslog.log(LOG_INFO, msg);
+
+  // Setup OTA Update
+  ArduinoOTA.begin();
+
+  configTime(MYTZ, "pool.ntp.org");
+
+  // set I2C pins (SDA, SDL)
+  Wire.begin(GPIO0_PIN, GPIO2_PIN);
+  if (!mcp.begin_I2C()) {
+    syslog.log(LOG_INFO, "ERROR: MCP setup failed");
+  }
+
+  if ( ! veml.setup() ) {
+    syslog.log(LOG_INFO, "ERROR: veml setup failed");
+  }
+  
+  // setup the reed switch on the shed door
+  shedDoor->setup("shed_door");
+
+  IrrigationZones.setStorage(storage_array);
+
+  //TODO: add starttimes to status
+  //maybe the mcp reference can be passed just once?
+  //address, backwards?, Start, Mins, Schedule, EveryOtherDay?
+  IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, false, &mcp);
+  IrrigationRelay * irz2 = new IrrigationRelay("cottage",     6, true, "7:15", 15, true,  &mcp);
+  IrrigationRelay * irz3 = new IrrigationRelay("south_fence", 5, true, "7:30",  5, false, &mcp);
+  IrrigationRelay * irz4 = new IrrigationRelay("hill",        4, true, "7:45", 15, true,  &mcp);
+  IrrigationRelay * irz5 = new IrrigationRelay("back_fence",  2, true, "7:45", 15, true,  &mcp);
+  IrrigationRelay * irz6 = new IrrigationRelay("north_fence", 1, true, "8:15", 15, true,  &mcp);
+// IrrigationRelay * irz7 = new IrrigationRelay("garden",      3, true, "6:00", 8, &mcp);
+// irz7->setStartTimeFromString(                                       "10:00");
+// irz7->setStartTimeFromString(                                       "14:00");
+// irz7->setStartTimeFromString(                                       "18:00");
+  irz1->setup(); IrrigationZones.push_back(irz1);
+  irz2->setup(); IrrigationZones.push_back(irz2);
+  irz3->setup(); IrrigationZones.push_back(irz3);
+  irz4->setup(); IrrigationZones.push_back(irz4);
+  irz5->setup(); IrrigationZones.push_back(irz5);
+  irz6->setup(); IrrigationZones.push_back(irz6);
+
+  // PatioPots irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
+  // Cottage irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
+  // Hill irz3->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
+  // South Fence irz4->setSoilMoistureSensor(0x48, 2, 86); // i2c address, pin, % to run
+  // Back fence irz5->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
+  // North Fence irz6->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
+  // Garden irz7->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
+  // Zone8 irz8->setSoilMoistureSensor(0x4b, 0, 86); // i2c address, pin, % to run
+
+  // Start the server
+  server.on("/debug", handleDebug);
+  server.on("/irrigation", handleIrrigation);
+  server.on("/zones", handleZones);
+  server.on("/door", handleDoor);
+  server.on("/sensors", handleSensors);
+  server.on("/status", handleStatus);
+
+  server.begin();
+  Serial.println("End of setup");
+}
+
 
 time_t prevTime = 0;;
 void loop() {
