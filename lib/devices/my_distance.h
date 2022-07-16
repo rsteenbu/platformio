@@ -5,6 +5,7 @@
 #include <coredecls.h>                  // settimeofday_cb()
 #include <TZ.h>
 #include <Wire.h>
+#include "Adafruit_MCP23X17.h"
 
 //HC-SR04
  
@@ -21,29 +22,9 @@ class DISTANCE {
     char* name;
 
     //constructor
-    DISTANCE (int a, int b ): echoPin(a), trigPin(b) {}
+    DISTANCE (int a, int b );
 
-    void setup(const char* a) {
-      name = new char[strlen(a)+1];
-      strcpy(name,a);
-
-      pinMode(trigPin, OUTPUT);
-      pinMode(echoPin, INPUT);
-    }
-
-   void handle() {
-     prevTime = now;
-     now = time(nullptr);
-
-     if ( now == prevTime ) return;
-
-     digitalWrite(trigPin, LOW);
-     delayMicroseconds(2);
-     digitalWrite(trigPin, HIGH);
-     delayMicroseconds(10);
-     digitalWrite(trigPin, LOW);
-
-     inches = pulseIn(echoPin, HIGH) / 74 / 2;
-   }
+    void setup(const char* a);
+    void handle();
 };
 #endif

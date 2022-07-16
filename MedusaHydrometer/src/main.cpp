@@ -14,14 +14,15 @@
 
 #include <Wire.h>
 #include <my_lcd.h>
-#include <my_pir.h>
 #include <my_relay.h>
+#include <my_motion.h>
 
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 #include <DHT_U.h>
 
 // Syslog server connection info
+
 #define APP_NAME "base"
 #define JSON_SIZE 600
 #define MYTZ TZ_America_Los_Angeles
@@ -47,7 +48,7 @@ double rightHumidity;
 double leftTemp;
 double rightTemp;
 LCD * lcd = new LCD();
-PIR * pir = new PIR(D7); 
+MOTION * motion = new MOTION(D7); 
 TimerRelay * Mister = new TimerRelay(D3);
 
 void handleDebug() {
@@ -218,12 +219,12 @@ void loop() {
 
   prevTime = now;
   now = time(nullptr);
-  pir->handle();
-  if (pir->activity() && ! lcd->state) {
+  motion->handle();
+  if (motion->activity() && ! lcd->state) {
     lcd->setBackLight(true);
     syslog.log(LOG_INFO, "Person detected, turned backlight on");
   } 
-  if (!pir->activity() && lcd->state) {
+  if (!motion->activity() && lcd->state) {
     lcd->setBackLight(false);
     syslog.log(LOG_INFO, "Nobody detected, turned backlight off");
   }

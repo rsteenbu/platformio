@@ -6,14 +6,9 @@
 #include <ArduinoJson.h>
 #include <Vector.h>
 
-#include <Timezone.h> 
-#include <TimeLib.h>
-#include <my_ntp.h>
-#include <teensy_relay.h>
 
-
-/*
 #include <my_relay.h>
+
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -21,7 +16,7 @@
 #include <TZ.h>
 
 #define MYTZ TZ_America_Los_Angeles
-*/
+
 
 // This device info
 #define APP_NAME "switch"
