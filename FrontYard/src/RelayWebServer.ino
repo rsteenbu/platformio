@@ -55,7 +55,6 @@ DeviceAddress frontyardThermometer;
 
 DuskToDawnScheduleRelay * lvLights = new DuskToDawnScheduleRelay(D4);
 IrrigationRelay * irrigation = new IrrigationRelay(D5);
-
 MOTION * motionsensor = new MOTION(D6);
 
 float temperature = 0;
@@ -74,7 +73,8 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   while (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Connecting to network...");
+    sprintf(msg, "Connecting to network SID [%s]", WIFI_SSID);
+    Serial.println(msg);
     delay(500);
   }
 

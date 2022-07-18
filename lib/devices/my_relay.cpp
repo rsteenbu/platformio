@@ -263,8 +263,7 @@ void TimerRelay::setNextTimeToRun() {
   }
 }
 
-
-//constructurs
+// TimerRelay constructurs
 TimerRelay::TimerRelay(int a): Relay(a) {
   setEveryDayOn();
 }
@@ -272,6 +271,7 @@ TimerRelay::TimerRelay (int a, Adafruit_MCP23X17* b): Relay(a, b) {
   setEveryDayOn();
 }
 
+// TimerRelay methods
 void TimerRelay::setRuntime(int a) {
   initialRunTime = a;
 }
@@ -455,7 +455,7 @@ bool TimerRelay::handle() {
   return false;
 }
 
-//constructors
+// IrrigationRelay constructors
 IrrigationRelay::IrrigationRelay (int a): TimerRelay(a) { }
 IrrigationRelay::IrrigationRelay (int a, Adafruit_MCP23X17* b): TimerRelay(a, b) { }
 //"patio_pots",  7,       true,      "7:00",              3,            , '1111111'
@@ -468,6 +468,7 @@ IrrigationRelay::IrrigationRelay (const char* a, int b, bool c, const char* d, i
   if (f) { this->setEveryOtherDayOn(); }
 }
 
+// IrrigationRelay methods
 // turn on the soilMoisture check at soilMoisturePercentageToRun
 void IrrigationRelay::setSoilMoistureSensor(int a, int b) {
   soilMoistureSensor = true;
