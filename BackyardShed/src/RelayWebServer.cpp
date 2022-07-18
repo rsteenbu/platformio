@@ -292,7 +292,6 @@ void setup() {
   Serial.println("End of setup");
 }
 
-
 time_t prevTime = 0;;
 void loop() {
   ArduinoOTA.handle();
