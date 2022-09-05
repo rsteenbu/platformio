@@ -233,26 +233,31 @@ void loop() {
   if ( now != prevTime ) {
 
     sensors_event_t event;
+    double dataFromSensor;
 
     // Row 1, Humdity 
     char row1[17];
     dhtLeft.humidity().getEvent(&event);
-    leftHumidity = event.relative_humidity;
+    leftHumidity = isnan(event.relative_humidity) ? -1 : event.relative_humidity;
+
     dhtRight.humidity().getEvent(&event);
-    rightHumidity = event.relative_humidity;
+    rightHumidity = isnan(event.relative_humidity) ? -1 : event.relative_humidity;
+
+
     sprintf(row1, "H: %4.2f%% %5.2f%%", leftHumidity, rightHumidity);
     lcd->setCursor(0, 0);
     lcd->print(row1);
 
     char row2[17];
+    // If the mister is running show the Timee that's left running, otherwise show the right temp and humidity.
     if ( Mister->status() ) {
       sprintf(row2, "Time left: %s", Mister->timeLeftToRun); 
     } else {
       // Row 2, Temperature
       dhtLeft.temperature().getEvent(&event);
-      leftTemp = event.temperature * 9 / 5 + 32;
+      leftTemp = isnan(event.temperature) ? -1 : event.temperature * 9 / 5 + 32;
       dhtRight.temperature().getEvent(&event);
-      rightTemp = event.temperature * 9 / 5 + 32;
+      rightTemp = isnan(event.temperature) ? -1 : event.temperature * 9 / 5 + 32;
       sprintf(row2, "T: %5.2f%7.2f ", leftTemp, rightTemp);
     }
     lcd->setCursor(0, 1);
