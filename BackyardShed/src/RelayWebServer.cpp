@@ -257,9 +257,9 @@ void setup() {
   IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, false, &mcp);
   IrrigationRelay * irz2 = new IrrigationRelay("cottage",     6, true, "7:15", 15, true,  &mcp);
   IrrigationRelay * irz3 = new IrrigationRelay("south_fence", 5, true, "7:30",  5, false, &mcp);
-  IrrigationRelay * irz4 = new IrrigationRelay("hill",        4, true, "7:45", 15, true,  &mcp);
-  IrrigationRelay * irz5 = new IrrigationRelay("back_fence",  2, true, "7:45", 15, true,  &mcp);
-  IrrigationRelay * irz6 = new IrrigationRelay("north_fence", 1, true, "8:15", 15, true,  &mcp);
+  IrrigationRelay * irz4 = new IrrigationRelay("hill",        4, true, "7:45", 20, true,  &mcp);
+  IrrigationRelay * irz5 = new IrrigationRelay("back_fence",  2, true, "8:15", 15, true,  &mcp);
+  IrrigationRelay * irz6 = new IrrigationRelay("north_fence", 1, true, "8:30", 15, true,  &mcp);
 // IrrigationRelay * irz7 = new IrrigationRelay("garden",      3, true, "6:00", 8, &mcp);
 // irz7->setStartTimeFromString(                                       "10:00");
 // irz7->setStartTimeFromString(                                       "14:00");
