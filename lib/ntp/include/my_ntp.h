@@ -4,10 +4,7 @@
 #define USE_WIFI_NINA false
 #define USE_WIFI_CUSTOM true
 
-#include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
-
-IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 
 class NTP {
   private:
