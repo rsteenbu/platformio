@@ -1,5 +1,7 @@
 #define USE_WIFI_NINA false
+#define USE_WIFI101 false
 #define USE_WIFI_CUSTOM true
+#include <WiFiUdp.h>
 #include <WiFiEspAT.h>
 #include <WiFiWebServer.h>
 #include <Syslog.h>
@@ -8,10 +10,9 @@
 #include <TimeLib.h>
 
 #include <my_ntp.h>
-#include <teensy_relay.h>
 
 int debug = 0;
-teensyRelay * XmasTree = new teensyRelay(22);
+//teensyRelay * XmasTree = new teensyRelay(22);
 
 WiFiWebServer server(80);
 WiFiUdpSender udpClient;
@@ -35,7 +36,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial1.begin(115200);
-  XmasTree->setup("xmastree");
+  //XmasTree->setup("xmastree");
 
   WiFi.init(Serial1);
 
@@ -113,9 +114,9 @@ void handleStatus() {
   JsonObject switches = doc.createNestedObject("switches");
   JsonObject sensors = doc.createNestedObject("sensors");
 
-  switches[XmasTree->name]["state"] = XmasTree->state();
-  switches[XmasTree->name]["Last On Time"] = XmasTree->prettyOnTime;
-  switches[XmasTree->name]["Last Off Time"] = XmasTree->prettyOffTime;
+//  switches[XmasTree->name]["state"] = XmasTree->state();
+//  switches[XmasTree->name]["Last On Time"] = XmasTree->prettyOnTime;
+//  switches[XmasTree->name]["Last Off Time"] = XmasTree->prettyOffTime;
   int lightLevel = 0;
   lightLevel = analogRead(A9);
   sensors["lightLevel"] = lightLevel;
@@ -140,14 +141,14 @@ void handleStatus() {
 
 void handleTree() {
   if (server.arg("state") == "status") {
-    server.send(200, "text/plain", (XmasTree->on ? "1" : "0"));
+//    server.send(200, "text/plain", (XmasTree->on ? "1" : "0"));
   } else if (server.arg("state") == "on") {
-    XmasTree->switchOn();
-    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
+//    XmasTree->switchOn();
+//    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
-    XmasTree->switchOff();
-    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
+//    XmasTree->switchOff();
+//    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
     server.send(200, "text/plain");
   } else {
     server.send(404, "text/plain", "ERROR: uknonwn light command");

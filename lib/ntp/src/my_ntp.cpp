@@ -1,5 +1,7 @@
 #include "my_ntp.h"
 
+IPAddress myTimeServer(129, 6, 15, 28); // time.nist.gov NTP server
+
 void NTP::sendNTPpacket(WiFiUDP& Udp) {
   // set all bytes in the buffer to 0
   memset(packetBuffer, 0, 48);
@@ -18,7 +20,7 @@ void NTP::sendNTPpacket(WiFiUDP& Udp) {
 
   // all NTP fields have been given values, now
   // you can send a packet requesting a timestamp:
-  Udp.beginPacket(timeServer, 123); //NTP requests are to port 123
+  Udp.beginPacket(myTimeServer, 123); //NTP requests are to port 123
   Udp.write(packetBuffer, 48);
   Udp.endPacket();
 }
