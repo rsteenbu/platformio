@@ -1,0 +1,198 @@
+#define USE_WIFI_NINA false
+#define USE_WIFI_CUSTOM true
+#include <WiFiUdp.h>
+#include <Syslog.h>
+#include <ArduinoJson.h>
+#include <Timezone.h> 
+#include <WiFiEspAT.h>
+#include <http_request.h>
+#include <http_response.h>
+#include <http_router.h>
+
+#include <my_ntp.h>
+#include <teensy_relay.h>
+
+int debug = 0;
+teensyRelay * XmasTree = new teensyRelay(22);
+
+WiFiServer server(80);
+WiFiUdpSender udpClient;
+WiFiUDP Udp;
+
+NTP ntp;
+
+// This device info
+const char* APP_NAME = "system";
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+
+#define JSON_SIZE 700
+#define MAX_REQUEST_SIZE 1024
+
+// US Pacific Time Zone 
+TimeChangeRule usPST = {"PST", Second, Sun, Mar, 2, -420};  // Daylight time = UTC - 7 hours
+TimeChangeRule usPDT = {"PDT", First, Sun, Nov, 2, -480};   // Standard time = UTC - 8 hours
+
+
+static void ping_responder (Request *request, Response *response) {
+  response_set_content_type(response, (uint8_t *) "application/json");
+  response_write(response, (uint8_t *) "{ \"status\": \"pong\" }");
+}
+
+Router *router = router_create();
+Router *setup_routes ( ) {
+  router_add_route(router, (uint8_t *) "/ping",  ping_responder);
+  return router;
+}
+
+
+Timezone usPacific(usPST, usPDT);
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  Serial1.begin(115200);
+  XmasTree->setup("xmastree");
+
+  WiFi.init(Serial1);
+
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.print("Communication with WiFi module failed!");
+    Serial.println(WiFi.status());
+    // don't continue
+    while (true);
+  }
+
+  if (!WiFi.setHostname(DEVICE_HOSTNAME)) {
+    Serial.println("Setting hostname failed");
+  }
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  // waiting for connection to Wifi network set with the SetupWiFiConnection sketch
+  Serial.println("Waiting for connection to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print('.');
+  }
+  Serial.println("Connected.");
+
+  // start the http webserver
+  server.begin();
+
+  char hostname[40];
+  WiFi.hostname(hostname);
+  Serial.print("Hostname set to: ");
+  Serial.println(hostname);
+  IPAddress ip = WiFi.localIP();
+  syslog.logf(LOG_INFO, "%s Alive! at IP: %d.%d.%d.%d", hostname, ip[0], ip[1], ip[2], ip[3]);
+
+  Udp.begin(2390);
+  // wait to see if a reply is available
+  delay(1000);
+
+  int tries = 0;
+  while (! ntp.setup(Udp) && tries++ < 5) {
+    if (debug) {
+      syslog.logf(LOG_INFO, "Getting NTP time failed, try %d", tries);
+    }
+    delay(1000);
+  }
+  if (tries == 5) {
+     syslog.log(LOG_INFO, "ERROR, time not set from NTP server");
+  }
+
+  // Set the system time from the NTP epoch
+  setSyncInterval(300);
+  setSyncProvider(getTeensy3Time);
+  delay(100);
+  if (timeStatus()!= timeSet) {
+    Serial.println("Unable to sync with the RTC");
+  } else {
+    Serial.println("RTC has set the system time");
+  }
+
+  if (ntp.epoch == 0) {
+    syslog.log(LOG_INFO, "Setting NTP time failed");
+  } else {
+    time_t pacific = usPacific.toLocal(ntp.epoch);
+    Teensy3Clock.set(pacific); // set the RTC
+    setTime(pacific);
+  }
+
+}
+
+time_t getTeensy3Time() {
+  return Teensy3Clock.get();
+}
+
+// read the request and return the results for parsing
+uint8_t *readRequest (WiFiClient client) {
+  static uint8_t buf[MAX_REQUEST_SIZE];
+  int crlfcount = 0, position = 0;
+  char c;
+
+  // while there is still data, read it
+  while (client.connected() && client.available() && position < MAX_REQUEST_SIZE && crlfcount < 4) {
+    c = client.read();
+
+    if (c == '\n' || c == '\r') {
+      crlfcount++;
+    } else {
+      crlfcount = 0;
+    }
+
+    buf[position] = (uint8_t) c;
+    position++;
+  }
+
+  if (position == 0) {
+    return NULL;
+  } else {
+    buf[position] = '\0';
+    return buf;
+  }
+}
+
+void loop() {
+
+  WiFiClient connection = server.available();
+  if (connection) {
+    IPAddress ip = connection.remoteIP();
+    Serial.print("new client ");
+    Serial.println(ip);
+
+    // read the request, returns a buffer
+    uint8_t *buf = readRequest(connection);
+
+    // if there's an error, bail
+    if (buf == NULL) {
+      connection.flush();
+      delay(25);
+      return;
+    }
+
+    route(connection, router, buf);
+//    route((uint8_t) connection, router, (uint8_t *) buf);
+
+
+    /*
+    // parse the request, get the results back
+    Request *request = parse_request(buf);
+
+    // this allows for better path matching
+    String path = String((char *) request->path);
+
+    Serial.print("request path: ");
+    Serial.println(path);
+
+    if (path.compareTo("/ping")) {
+      connection.println("HTTP/1.1 200 OK\r\nContent-type: text/plain\r\n\r\npong\r\n");
+    } else {
+      connection.println("HTTP/1.1 404 Not Found\r\n");
+    }
+    */
+
+    connection.stop();
+
+    Serial.println("client disconnected");
+  }
+}
+

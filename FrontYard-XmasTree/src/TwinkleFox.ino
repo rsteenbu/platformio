@@ -16,7 +16,7 @@
 
 #define JSON_SIZE 200
 #define NUM_LEDS_PER_STRIP 100
-#define NUM_STRIPS 8
+#define NUM_STRIPS 1
 #define NUM_LEDS      NUM_LEDS_PER_STRIP * NUM_STRIPS
 #define VOLTS          12
 #define MAX_MA       4000

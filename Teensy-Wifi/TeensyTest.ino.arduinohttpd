@@ -1,3 +1,5 @@
+#define USE_WIFI_NINA false
+#define USE_WIFI_CUSTOM true
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoJson.h>
@@ -23,6 +25,7 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 
 #define JSON_SIZE 700
 #define MAX_REQUEST_SIZE 1024
+#define WIFIESPAT_UDP_TX_BUFFER_SIZE 0
 
 // US Pacific Time Zone 
 TimeChangeRule usPST = {"PST", Second, Sun, Mar, 2, -420};  // Daylight time = UTC - 7 hours
@@ -159,19 +162,19 @@ void handleTree(ArduinoHttpServer::StreamHttpRequest<1024>& httpRequest, WiFiCli
     Serial.println("Turned tree on");
     ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
     httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
+    syslog.logf(LOG_INFO, "Turned xmastree on");
   } else if (httpRequest.getResource()[1] == "switchOff") {
     XmasTree->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
     Serial.println("Turned tree off");
     ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
     httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
   } else {
     String msg = "ERROR: uknown tree command: ";
     msg += httpRequest.getResource()[1];
     msg += "\n\n";
     ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
-    httpReply.send(msg);
+    httpReply.send( msg );
   }
 }
 

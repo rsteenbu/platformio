@@ -1,9 +1,12 @@
+#define USE_WIFI_NINA false
+#define USE_WIFI_CUSTOM true
 #include <WiFiUdp.h>
+#include <WiFiEspAT.h>
+#include "defines.h"
 #include <Syslog.h>
 #include <ArduinoJson.h>
 #include <Timezone.h> 
-#include <WiFiEspAT.h>
-#include <ArduinoHttpServer.h>
+#include <TimeLib.h>
 
 #include <my_ntp.h>
 #include <teensy_relay.h>
@@ -11,7 +14,7 @@
 int debug = 0;
 teensyRelay * XmasTree = new teensyRelay(22);
 
-WiFiServer server(80);
+WiFiWebServer server(80);
 WiFiUdpSender udpClient;
 WiFiUDP Udp;
 
@@ -22,12 +25,12 @@ const char* APP_NAME = "system";
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
 #define JSON_SIZE 700
-#define MAX_REQUEST_SIZE 1024
 
 // US Pacific Time Zone 
 TimeChangeRule usPST = {"PST", Second, Sun, Mar, 2, -420};  // Daylight time = UTC - 7 hours
 TimeChangeRule usPDT = {"PDT", First, Sun, Nov, 2, -480};   // Standard time = UTC - 8 hours
 Timezone usPacific(usPST, usPDT);
+
 
 void setup() {
   Serial.begin(115200);
@@ -38,7 +41,7 @@ void setup() {
   WiFi.init(Serial1);
 
   if (WiFi.status() == WL_NO_MODULE) {
-    Serial.print("Communication with WiFi module failed!");
+    Serial.print("Communication with WiFi module failed!": );
     Serial.println(WiFi.status());
     // don't continue
     while (true);
@@ -65,6 +68,10 @@ void setup() {
   Serial.println(hostname);
   IPAddress ip = WiFi.localIP();
   syslog.logf(LOG_INFO, "%s Alive! at IP: %d.%d.%d.%d", hostname, ip[0], ip[1], ip[2], ip[3]);
+
+  server.on("/status", handleStatus);
+  server.on("/tree", handleTree);
+  server.onNotFound(handleNotFound);
 
   Udp.begin(2390);
   // wait to see if a reply is available
@@ -98,14 +105,13 @@ void setup() {
     Teensy3Clock.set(pacific); // set the RTC
     setTime(pacific);
   }
-
 }
 
 time_t getTeensy3Time() {
   return Teensy3Clock.get();
 }
 
-void handleStatus(WiFiClient& client) {
+void handleStatus() {
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
   JsonObject sensors = doc.createNestedObject("sensors");
@@ -127,79 +133,58 @@ void handleStatus(WiFiClient& client) {
   if (jsonDocSize > JSON_SIZE) {
     char msg[40];
     sprintf(msg, "ERROR: JSON message too long, %d", jsonDocSize);
-
-    ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "500");
-    httpReply.send( msg );
-
+    server.send(500, "text/plain", msg);
   } else {
     String httpResponse;
     serializeJsonPretty(doc, httpResponse);
-
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
-    httpReply.send(httpResponse);
+    server.send(200, "text/plain", httpResponse);
   }
 }
 
-void handleNotFound(WiFiClient& client) {
+void handleTree() {
+  if (server.arg("state") == "status") {
+    Serial.println("Returning status for Tree state");
+    String msg = XmasTree->state();
+    Serial.print("state of tree received: " );
+    Serial.println(msg);
+    char contentType[] = "text/plain";
+    server.send(200, "text/plain", msg);
+
+  } else if (server.arg("state") == "on") {
+    XmasTree->switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    XmasTree->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
+    server.send(200, "text/plain");
+  } else {
+    server.send(404, "text/plain", "ERROR: uknonwn light command");
+  }
+}
+
+void handleNotFound() {
   Serial.println("Handling not found http request");
   String message = F("File Not Found\n\n");
 
-  ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
-  httpReply.send( message );
-}
+  message += F("URI: ");
+  message += server.uri();
+  message += F("\nMethod: ");
+  message += (server.method() == HTTP_GET) ? F("GET") : F("POST");
+  message += F("\nArguments: ");
+  message += server.args();
+  message += F("\n");
 
-void handleTree(ArduinoHttpServer::StreamHttpRequest<1024>& httpRequest, WiFiClient& client) {
-  if (httpRequest.getResource()[1] == "status") {
-    Serial.println("Returning status for Tree state");
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
-    String msg = XmasTree->state();
-    httpReply.send(msg);
-  } else if (httpRequest.getResource()[1] == "switchOn") {
-    XmasTree->switchOn();
-    Serial.println("Turned tree on");
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
-    httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
-  } else if (httpRequest.getResource()[1] == "switchOff") {
-    XmasTree->switchOff();
-    Serial.println("Turned tree off");
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
-    httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
-  } else {
-    String msg = "ERROR: uknown tree command: ";
-    msg += httpRequest.getResource()[1];
-    msg += "\n\n";
-    ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
-    httpReply.send(msg);
+  for (uint8_t i = 0; i < server.args(); i++)
+  {
+    message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
   }
+
+  server.send(404, F("text/plain"), message);
+
 }
 
 void loop() {
-
-   WiFiClient client( server.available() );
-
-   if (client.connected())
-   {
-      // Connected to client. Allocate and initialize StreamHttpRequest object.
-      ArduinoHttpServer::StreamHttpRequest<1024> httpRequest(client);
-
-      // Parse the request.
-      if (httpRequest.readRequest()) {
-         // Retrieve 2nd part of HTTP resource.
-         // E.g.: "on" from "/api/sensors/on"
-	 Serial.print("getResource[0]: ");
-         Serial.println(httpRequest.getResource()[0]);
-
-         if (httpRequest.getResource().toString() == "/status") {
-           handleStatus(client);
-         } else if (httpRequest.getResource()[0] == "tree") {
-           handleTree(httpRequest, client);
-	 } else {
-           handleNotFound(client);
-	 }
-      }
-      client.stop();
-   }
+  server.handleClient();
 }
 
