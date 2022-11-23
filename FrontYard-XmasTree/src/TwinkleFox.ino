@@ -1,21 +1,18 @@
-#define USE_WIFI_NINA false
-#define USE_WIFI_CUSTOM true
 #define USE_OCTOWS2811
-#include <WiFiEspAT.h>
-#include <WiFiWebServer.h>
 #include <Syslog.h>
 #include <ArduinoJson.h>
 #include <Timezone.h> 
-#include <TimeLib.h>
+#include <WiFiEspAT.h>
+#include <ArduinoHttpServer.h>
 
 #include <OctoWS2811.h>
-#include "FastLED.h"
+#include <FastLED.h>
 
 #include <my_ntp.h>
 #include <teensy_relay.h>
 
-#define JSON_SIZE 200
-#define NUM_LEDS_PER_STRIP 100
+#define JSON_SIZE 400
+#define NUM_LEDS_PER_STRIP 300
 #define NUM_STRIPS 1
 #define NUM_LEDS      NUM_LEDS_PER_STRIP * NUM_STRIPS
 #define VOLTS          12
@@ -24,11 +21,10 @@
 int debug = 0;
 teensyRelay * XmasTree = new teensyRelay(22);
 
-WiFiWebServer server(80);
+WiFiServer server(80);
 WiFiUdpSender udpClient;
 WiFiUDP Udp;
 
-IPAddress timeServer(129, 6, 15, 28); // time.nist.gov NTP server
 NTP ntp;
 
 // This device info
@@ -103,7 +99,8 @@ void setup() {
     delay(1000);
     Serial.print('.');
   }
-  Serial.println();
+  Serial.print("Connected to ");
+  Serial.println(WIFI_SSID);
 
   // start the http webserver
   server.begin();
@@ -115,15 +112,12 @@ void setup() {
   IPAddress ip = WiFi.localIP();
   syslog.logf(LOG_INFO, "%s Alive! at IP: %d.%d.%d.%d", hostname, ip[0], ip[1], ip[2], ip[3]);
 
-  server.on("/status", handleStatus);
-  server.on("/tree", handleTree);
-
   Udp.begin(2390);
   // wait to see if a reply is available
   delay(1000);
 
   int tries = 0;
-  while (! ntp.setup(timeServer, Udp) && tries++ < 5) {
+  while (! ntp.setup(Udp) && tries++ < 5) {
     if (debug) {
       syslog.logf(LOG_INFO, "Getting NTP time failed, try %d", tries);
     }
@@ -134,6 +128,7 @@ void setup() {
   }
 
   // Set the system time from the NTP epoch
+  setSyncInterval(300);
   setSyncProvider(getTeensy3Time);
   delay(100);
   if (timeStatus()!= timeSet) {
@@ -150,8 +145,8 @@ void setup() {
     setTime(pacific);
   }
 
-  LEDS.addLeds<OCTOWS2811>(leds, NUM_LEDS_PER_STRIP);
-  LEDS.setBrightness(32);
+  FastLED.addLeds<OCTOWS2811>(leds, NUM_LEDS_PER_STRIP);
+  FastLED.setBrightness(32);
 //  FastLED.setMaxPowerInVoltsAndMilliamps( VOLTS, MAX_MA);
 
   chooseNextColorPalette(gTargetPalette);
@@ -162,12 +157,14 @@ time_t getTeensy3Time() {
   return Teensy3Clock.get();
 }
 
-void handleStatus() {
+void handleStatus(WiFiClient& client) {
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
   JsonObject sensors = doc.createNestedObject("sensors");
 
   switches[XmasTree->name]["state"] = XmasTree->state();
+  switches[XmasTree->name]["Last On Time"] = XmasTree->prettyOnTime;
+  switches[XmasTree->name]["Last Off Time"] = XmasTree->prettyOffTime;
   int lightLevel = 0;
   lightLevel = analogRead(A9);
   sensors["lightLevel"] = lightLevel;
@@ -175,39 +172,85 @@ void handleStatus() {
 
   // 11/16/21 20:17:07
   char timeString[20];
-  sprintf(timeString, "%02d/%02d/%02d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
+  sprintf(timeString, "%02d/%02d/%04d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
   doc["time"] = timeString;
 
   size_t jsonDocSize = measureJsonPretty(doc);
   if (jsonDocSize > JSON_SIZE) {
     char msg[40];
     sprintf(msg, "ERROR: JSON message too long, %d", jsonDocSize);
-    server.send(500, "text/plain", msg);
+
+    ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "500");
+    httpReply.send( msg );
+
   } else {
     String httpResponse;
     serializeJsonPretty(doc, httpResponse);
-    server.send(500, "text/plain", httpResponse);
+
+    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
+    httpReply.send(httpResponse);
   }
 }
 
-void handleTree() {
-  if (server.arg("state") == "status") {
-    server.send(200, "text/plain", (XmasTree->on ? "1" : "0"));
-  } else if (server.arg("state") == "on") {
+void handleNotFound(WiFiClient& client) {
+  Serial.println("Handling not found http request");
+  String message = F("File Not Found\n\n");
+
+  ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
+  httpReply.send( message );
+}
+
+void handleTree(ArduinoHttpServer::StreamHttpRequest<1024>& httpRequest, WiFiClient& client) {
+  if (httpRequest.getResource()[1] == "status") {
+    Serial.println("Returning status for Tree state");
+    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
+    String msg = XmasTree->state();
+    httpReply.send(msg);
+  } else if (httpRequest.getResource()[1] == "switchOn") {
     XmasTree->switchOn();
+    Serial.println("Turned tree on");
+    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
+    httpReply.send("");
     syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
-    server.send(200, "text/plain");
-  } else if (server.arg("state") == "off") {
+  } else if (httpRequest.getResource()[1] == "switchOff") {
     XmasTree->switchOff();
+    Serial.println("Turned tree off");
+    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
+    httpReply.send("");
     syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
-    server.send(200, "text/plain");
   } else {
-    server.send(404, "text/plain", "ERROR: uknonwn light command");
+    String msg = "ERROR: uknown tree command: ";
+    msg += httpRequest.getResource()[1];
+    msg += "\n\n";
+    ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
+    httpReply.send(msg);
   }
 }
 
 void loop() {
-  server.handleClient();
+  WiFiClient client( server.available() );
+
+  if (client.connected()) {
+    // Connected to client. Allocate and initialize StreamHttpRequest object.
+    ArduinoHttpServer::StreamHttpRequest<1024> httpRequest(client);
+
+    // Parse the request.
+    if (httpRequest.readRequest()) {
+      // Retrieve 2nd part of HTTP resource.
+      // E.g.: "on" from "/api/sensors/on"
+      Serial.print("getResource[0]: ");
+      Serial.println(httpRequest.getResource()[0]);
+
+      if (httpRequest.getResource().toString() == "/status") {
+	handleStatus(client);
+      } else if (httpRequest.getResource()[0] == "tree") {
+	handleTree(httpRequest, client);
+      } else {
+	handleNotFound(client);
+      }
+    }
+    client.stop();
+  }
 
   if (XmasTree->status()) {
     EVERY_N_SECONDS( SECONDS_PER_PALETTE ) { 
@@ -218,7 +261,7 @@ void loop() {
       nblendPaletteTowardPalette( gCurrentPalette, gTargetPalette, 12);
     }
 
-    drawTwinkles( leds);
+    drawTwinkles(leds);
 
     FastLED.show();
   }

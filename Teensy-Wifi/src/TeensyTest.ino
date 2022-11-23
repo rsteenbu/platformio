@@ -54,7 +54,8 @@ void setup() {
     delay(1000);
     Serial.print('.');
   }
-  Serial.println("Connected.");
+  Serial.print("Connected to ");
+  Serial.println(WIFI_SSID);
 
   // start the http webserver
   server.begin();
@@ -179,8 +180,7 @@ void loop() {
 
    WiFiClient client( server.available() );
 
-   if (client.connected())
-   {
+   if (client.connected()) {
       // Connected to client. Allocate and initialize StreamHttpRequest object.
       ArduinoHttpServer::StreamHttpRequest<1024> httpRequest(client);
 

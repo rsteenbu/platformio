@@ -1,45 +1,64 @@
+#ifdef ESP32
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+#else
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
+#include <sys/time.h>                   // struct timeval
+#include <coredecls.h>                  // settimeofday_cb()
+#include <TZ.h>
+#endif
+
+#include <WiFiClient.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 
 #include <time.h>                       // time() ctime()
-#include <sys/time.h>                   // struct timeval
-#include <coredecls.h>                  // settimeofday_cb()
-#include <TZ.h>
 
+#ifdef ESP32
+WebServer server(80);
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = 8*60*60*-1; const int   daylightOffset_sec = 3600;
+#else
 ESP8266WebServer server(80);
+#define MYTZ TZ_America_Los_Angeles
+#endif
 
 // Syslog server connection info
 #define APP_NAME "bootstrap"
 #define JSON_SIZE 200
-#define MYTZ TZ_America_Los_Angeles
 
 // A UDP instance to let us send and receive packets over UDP
 WiFiUDP udpClient;
 
+#include <SPI.h>
 #include <Wire.h>
 
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
+#ifndef ESP32
 // ESP-01 Pins
 const int TX_PIN=1;
 const int RX_PIN=3;
-const int GPIO0_PIN=0;
-const int GPIO2_PIN=2;
+const int SDA_PIN=0;
+const int SCL_PIN=2;
+#else
+const int SDA_PIN=21;
+const int SCL_PIN=22;
+#endif
 
 int debug = 0;
 bool scanI2CMode = false;
-
 char msg[40];
+
 void setup() {
   // set I2C pins (SDA, CLK)
-  Wire.begin(GPIO0_PIN, GPIO2_PIN);
+  Wire.begin(SDA_PIN, SCL_PIN);
 
   Serial.begin(115200);
   Serial.println("Booting up");
@@ -61,7 +80,11 @@ void setup() {
   // Setup OTA Update
   ArduinoOTA.begin();
 
+#ifdef ESP32
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+#else
   configTime(MYTZ, "pool.ntp.org");
+#endif
 
   // Start the server
   // Start the server
