@@ -6,6 +6,8 @@
 #include <Syslog.h>
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
+#include <Arduino.h>
+#include <Vector.h>
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -35,18 +37,47 @@ WiFiUDP udpClient;
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
 
-#define DHTLEFTPIN D5            // Digital pin connected to the DHT sensor
-#define DHTRIGHTPIN D6            // Digital pin connected to the DHT sensor
-#define DHTTYPE    DHT22     // DHT 22 (AM2302)
-DHT_Unified dhtLeft(D5, DHTTYPE);
-DHT_Unified dhtRight(DHTRIGHTPIN, DHTTYPE);
+class myDHT : public DHT_Unified {
+  uint8_t pin;
+  uint8_t type;
+
+  public:
+    char* sensorName;
+    sensors_event_t event;
+    double humid;
+    double temp;
+
+    //constructor
+    myDHT(uint8_t x, uint8_t y) : DHT_Unified(x, y) {
+      pin = x;
+      type = y;
+      pinMode(pin, INPUT_PULLUP);
+    };
+    
+    //member functions
+    void setSensorName(const char* a) {
+      sensorName = new char[strlen(a)+1];
+      strcpy(sensorName,a);
+    }
+
+    double getHumidity() {
+      this->humidity().getEvent(&event);
+      humid = isnan(event.relative_humidity) ? -1 : event.relative_humidity;
+      return humid;
+    }
+    double getTemp() {
+      this->temperature().getEvent(&event);
+      temp = isnan(event.temperature) ? -1 : event.temperature * 9 / 5 + 32;
+      return temp;
+    }
+};
+
+Vector<myDHT*> DHTSensors;
+myDHT* storage_array[8];
+
 
 int debug = 0;
 char msg[40];
-double leftHumidity;
-double rightHumidity;
-double leftTemp;
-double rightTemp;
 LCD * lcd = new LCD();
 MOTION * motion = new MOTION(D7); 
 TimerRelay * Mister = new TimerRelay(D3);
@@ -109,24 +140,31 @@ void handleDisplay() {
 }
 
 void handleSensors() {
-  if (server.arg("temp") == "left") {
+  for (myDHT* sensor : DHTSensors) {
     char msg[10];
-    sprintf(msg, "%0.2f", leftTemp);
-    server.send(200, "text/plain", msg);
-  } else if (server.arg("temp") == "right") {
-    char msg[10];
-    sprintf(msg, "%0.2f", rightTemp);
-    server.send(200, "text/plain", msg);
-  } else if (server.arg("humidity") == "left") {
-    char msg[10];
-    sprintf(msg, "%0.2f", leftHumidity);
-    server.send(200, "text/plain", msg);
-  } else if (server.arg("humidity") == "right") {
-    char msg[10];
-    sprintf(msg, "%0.2f", rightHumidity);
-    server.send(200, "text/plain", msg);
-  } else {
-    server.send(404, "text/plain", "ERROR: Sensor not found.");
+    if (server.arg("temp") == "left") {
+      if (strcmp(sensor->sensorName, "leftDHT") == 0) {
+	sprintf(msg, "%0.2f", sensor->temp);
+	server.send(200, "text/plain", msg);
+      }
+    } else if (server.arg("temp") == "right") {
+      if (strcmp(sensor->sensorName, "rightDHT") == 0) {
+	sprintf(msg, "%0.2f", sensor->temp);
+	server.send(200, "text/plain", msg);
+      }
+    } else if (server.arg("humidity") == "left") {
+      if (strcmp(sensor->sensorName, "leftDHT") == 0) {
+	sprintf(msg, "%0.2f", sensor->humid);
+	server.send(200, "text/plain", msg);
+      }
+    } else if (server.arg("humidity") == "right") {
+      if (strcmp(sensor->sensorName, "rightDHT") == 0) {
+	sprintf(msg, "%0.2f", sensor->humid);
+	server.send(200, "text/plain", msg);
+      }
+    } else {
+      server.send(404, "text/plain", "ERROR: Sensor not found.");
+    }
   }
 }
 
@@ -139,10 +177,11 @@ void handleStatus() {
   switches["mister"]["state"] = Mister->state();
   switches["mister"]["Time Left"] = Mister->timeLeftToRun;
   JsonObject sensors = doc.createNestedObject("sensors");
-  sensors["left"]["humidity"] = leftHumidity;
-  sensors["left"]["temperature"] = leftTemp;
-  sensors["right"]["humidity"] = rightHumidity;
-  sensors["right"]["temperature"] = rightTemp;
+
+  for (myDHT* sensor : DHTSensors) {
+    sensors[sensor->sensorName]["humidity"] = sensor->humid;
+    sensors[sensor->sensorName]["temperature"] = sensor->temp;
+  }
 
   doc["LCD Backlight Status"] = lcd->state;
   doc["debug"] = debug;
@@ -185,7 +224,7 @@ void setup() {
     delay(500);
   }
 
-  sprintf(msg, "Alive! at IP: %s", (char*) WiFi.localIP().toString().c_str());
+  sprintf(msg, "%s Alive! at IP: %s", DEVICE_HOSTNAME, (char*) WiFi.localIP().toString().c_str());
   Serial.println(msg);
   syslog.logf(LOG_INFO, msg);
 
@@ -195,7 +234,6 @@ void setup() {
   configTime(MYTZ, "pool.ntp.org");
 
   // Start the server
-  // Start the server
   server.on("/debug", handleDebug);
   server.on("/mister", handleMister);
   server.on("/display", handleDisplay);
@@ -203,22 +241,41 @@ void setup() {
   server.on("/status", handleStatus);
   server.begin();
 
-  dhtLeft.begin();
-  dhtRight.begin();
   if (!lcd->begin(16, 2))  {
     syslog.log(LOG_INFO, "LCD Initialization failed");
+  }
+
+  DHTSensors.setStorage(storage_array);
+  
+  if (strcmp(DEVICE_HOSTNAME, "iot-medusa") == 0) {
+    myDHT* dhtLeft = new myDHT(D5, DHT22);
+    dhtLeft->begin();
+    dhtLeft->setSensorName("leftDHT");
+    DHTSensors.push_back(dhtLeft);
+
+    myDHT* dhtRight = new myDHT(D6, DHT22);
+    dhtRight->begin();
+    dhtRight->setSensorName("rightDHT");
+    DHTSensors.push_back(dhtRight);
+  } else if (strcmp(DEVICE_HOSTNAME, "iot-geckster") == 0) {
+    myDHT* dht = new myDHT(D5, DHT22);
+    dht->begin();
+    dht->setSensorName("rightDHT");
+    DHTSensors.push_back(dht);
   }
 }
 
 time_t prevTime = 0;
 time_t now = 0;
-bool displayOn;
+bool misterRan = false;
+
 void loop() {
   ArduinoOTA.handle();
   server.handleClient();
 
   prevTime = now;
   now = time(nullptr);
+
   motion->handle();
   if (motion->activity() && ! lcd->state) {
     lcd->setBackLight(true);
@@ -230,39 +287,35 @@ void loop() {
   }
 
   Mister->handle();
+
   if ( now != prevTime ) {
-
-    sensors_event_t event;
-    double dataFromSensor;
-
-    // Row 1, Humdity 
-    char row1[17];
-    dhtLeft.humidity().getEvent(&event);
-    leftHumidity = isnan(event.relative_humidity) ? -1 : event.relative_humidity;
-
-    dhtRight.humidity().getEvent(&event);
-    rightHumidity = isnan(event.relative_humidity) ? -1 : event.relative_humidity;
-
-
-    sprintf(row1, "H: %4.2f%% %5.2f%%", leftHumidity, rightHumidity);
     lcd->setCursor(0, 0);
-    lcd->print(row1);
-
-    char row2[17];
-    // If the mister is running show the Timee that's left running, otherwise show the right temp and humidity.
     if ( Mister->status() ) {
-      sprintf(row2, "Time left: %s", Mister->timeLeftToRun); 
-    } else {
-      // Row 2, Temperature
-      dhtLeft.temperature().getEvent(&event);
-      leftTemp = isnan(event.temperature) ? -1 : event.temperature * 9 / 5 + 32;
-      dhtRight.temperature().getEvent(&event);
-      rightTemp = isnan(event.temperature) ? -1 : event.temperature * 9 / 5 + 32;
-      sprintf(row2, "T: %5.2f%7.2f ", leftTemp, rightTemp);
+      char row1[17];
+      sprintf(row1, "Time left: %s", Mister->timeLeftToRun); 
+      lcd->print(row1);
+      misterRan = true;
+    } else if ( now % 2 == 0 ) { // only pull from the sensor every 2 secs
+      //clear the screen if the mister just finished running
+      if (misterRan) { 
+	lcd->clear();
+	misterRan=false;
+      }
+      lcd->setCursor(0, 0);
+      lcd->print("H:");
+      for (myDHT* sensor : DHTSensors) {
+	char row1[10];
+	sprintf(row1, " %4.2f%%", sensor->getHumidity());
+	lcd->print(row1);
+      }
+      // print the temperature on the 2nd row
+      lcd->setCursor(0, 1);
+      lcd->print("T:");
+      for (myDHT* sensor : DHTSensors) {
+	char row2[10];
+	sprintf(row2, " %4.2f%%", sensor->getTemp());
+	lcd->print(row2);
+      }
     }
-    lcd->setCursor(0, 1);
-    lcd->print(row2);
   }
-
-
 }
