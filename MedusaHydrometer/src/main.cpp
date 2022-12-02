@@ -8,20 +8,19 @@
 #include <ArduinoJson.h>
 #include <Arduino.h>
 #include <Vector.h>
+#include <Wire.h>
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
 #include <coredecls.h>                  // settimeofday_cb()
 #include <TZ.h>
 
-#include <Wire.h>
 #include <my_lcd.h>
 #include <my_relay.h>
 #include <my_motion.h>
+#include <my_dht.h>
 
 #include <Adafruit_Sensor.h>
-#include <DHT.h>
-#include <DHT_U.h>
 
 // Syslog server connection info
 
@@ -36,41 +35,6 @@ WiFiUDP udpClient;
 
 // Create a new syslog instance with LOG_LOCAL0 facility
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
-
-class myDHT : public DHT_Unified {
-  uint8_t pin;
-  uint8_t type;
-
-  public:
-    char* sensorName;
-    sensors_event_t event;
-    double humid;
-    double temp;
-
-    //constructor
-    myDHT(uint8_t x, uint8_t y) : DHT_Unified(x, y) {
-      pin = x;
-      type = y;
-      pinMode(pin, INPUT_PULLUP);
-    };
-    
-    //member functions
-    void setSensorName(const char* a) {
-      sensorName = new char[strlen(a)+1];
-      strcpy(sensorName,a);
-    }
-
-    double getHumidity() {
-      this->humidity().getEvent(&event);
-      humid = isnan(event.relative_humidity) ? -1 : event.relative_humidity;
-      return humid;
-    }
-    double getTemp() {
-      this->temperature().getEvent(&event);
-      temp = isnan(event.temperature) ? -1 : event.temperature * 9 / 5 + 32;
-      return temp;
-    }
-};
 
 Vector<myDHT*> DHTSensors;
 myDHT* storage_array[8];
@@ -288,19 +252,26 @@ void loop() {
 
   Mister->handle();
 
+  if ( now % 2 == 0 ) { // only pull from the sensor every 2 secs
+    for (myDHT* sensor : DHTSensors) { sensor->handle(); }
+  }
+
   if ( now != prevTime ) {
     lcd->setCursor(0, 0);
+
     if ( Mister->status() ) {
       char row1[17];
       sprintf(row1, "Time left: %s", Mister->timeLeftToRun); 
       lcd->print(row1);
       misterRan = true;
-    } else if ( now % 2 == 0 ) { // only pull from the sensor every 2 secs
+    } else {
       //clear the screen if the mister just finished running
       if (misterRan) { 
 	lcd->clear();
 	misterRan=false;
       }
+
+      // print the humdity on the 1st row
       lcd->setCursor(0, 0);
       lcd->print("H:");
       for (myDHT* sensor : DHTSensors) {
@@ -308,12 +279,13 @@ void loop() {
 	sprintf(row1, " %4.2f%%", sensor->getHumidity());
 	lcd->print(row1);
       }
+
       // print the temperature on the 2nd row
       lcd->setCursor(0, 1);
       lcd->print("T:");
       for (myDHT* sensor : DHTSensors) {
 	char row2[10];
-	sprintf(row2, " %4.2f%%", sensor->getTemp());
+	sprintf(row2, " %4.2f%s", sensor->getTemp());
 	lcd->print(row2);
       }
     }
