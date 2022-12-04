@@ -39,7 +39,6 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 Vector<myDHT*> DHTSensors;
 myDHT* storage_array[8];
 
-
 int debug = 0;
 char msg[40];
 LCD * lcd = new LCD();
@@ -240,6 +239,7 @@ void loop() {
   prevTime = now;
   now = time(nullptr);
 
+  // check if there's a person and turn on the LCD backlight if there is
   motion->handle();
   if (motion->activity() && ! lcd->state) {
     lcd->setBackLight(true);
@@ -250,15 +250,19 @@ void loop() {
     syslog.log(LOG_INFO, "Nobody detected, turned backlight off");
   }
 
+  // Handle mister API requests
   Mister->handle();
 
-  if ( now % 2 == 0 ) { // only pull from the sensor every 2 secs
+  // Gather data from sensors, only supported up to every 2s
+  if ( now % 2 == 0 ) { 
     for (myDHT* sensor : DHTSensors) { sensor->handle(); }
   }
 
+  // Update the LCD screen every 1 sec
   if ( now != prevTime ) {
     lcd->setCursor(0, 0);
 
+    // If the mister is running, show the count down timer
     if ( Mister->status() ) {
       char row1[17];
       sprintf(row1, "Time left: %s", Mister->timeLeftToRun); 
@@ -285,7 +289,7 @@ void loop() {
       lcd->print("T:");
       for (myDHT* sensor : DHTSensors) {
 	char row2[10];
-	sprintf(row2, " %4.2f%s", sensor->getTemp());
+	sprintf(row2, " %4.2f", sensor->getTemp());
 	lcd->print(row2);
       }
     }
