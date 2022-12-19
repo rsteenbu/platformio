@@ -271,7 +271,14 @@ TimerRelay::TimerRelay (int a, Adafruit_MCP23X17* b): Relay(a, b) {
   setEveryDayOn();
 }
 
-// TimerRelay methods
+void TimerRelay::setActive() {
+  active = true;
+}
+
+void TimerRelay::setInActive() {
+  active = false;
+}
+
 void TimerRelay::setRuntime(int a) {
   initialRunTime = a;
 }
@@ -406,6 +413,7 @@ void TimerRelay::checkStartTime(String &timesToStart) {
 }
 
 bool TimerRelay::isTimeToStart() {
+  time_t now = time(nullptr);
   struct tm *timeinfo = localtime(&now);
   int currHour = timeinfo->tm_hour;
   int currMinute = timeinfo->tm_min;
@@ -413,7 +421,8 @@ bool TimerRelay::isTimeToStart() {
 
   for (int i = 0; i < int(startTimesOfDay.size()); i++) {
     if (runDays[weekDay] && (((currHour * 60) + currMinute) == startTimesOfDay[i]) ) {
-      return true;
+      // don't run twice in the same minute
+      if (now - onTime > 60) return true;
     } 
   }
   return false;
@@ -430,11 +439,16 @@ bool TimerRelay::handle() {
   // only check every second
   if ( now == prevTime ) return false;
 
-  setTimeLeftToRun();
-  setNextTimeToRun();
+  if (now != prevTime)
+  {
+    setTimeLeftToRun();
+    setNextTimeToRun();
+  }
+
+  if ( now == prevTime ) return false;
 
   // if we don't have runtime set, then just return
-  if ( runTime == 0 ) return false;
+  if ( initialRunTime == 0 ) return false;
 
   // if we're on, turn it off if it's been more than than the time to run or if it's started raining
   // if the scheduleOverride is on, turn it off if the timer expires and resume normal
@@ -448,6 +462,7 @@ bool TimerRelay::handle() {
 
   // if we're not on, turn it on if it's the right day and time
   if ( !on && isTimeToStart() ) {
+    if (!active) return false;
     switchOn();
     return true;
   } 
@@ -541,10 +556,7 @@ bool IrrigationRelay::handle() {
   if (soilMoistureSensor) checkSoilMoisture();
 
   // if we don't have runtime set, then just return
-  if (initialRunTime == 0)
-  {
-    return false;
-  }
+  if (initialRunTime == 0)  return false;
 
   // if we're on, turn it off if it's been more than than the time to run or if it's started raining
   // if the scheduleOverride is on, turn it off if the timer expires and resume normal
@@ -567,10 +579,7 @@ bool IrrigationRelay::handle() {
 
   // if we're not on, turn it on if it's the right day and time
   if ( !on && isTimeToStart() ) {
-    if (!soilDry)
-    {
-      return false;
-    }
+    if (!soilDry) return false; 
     switchOn();
     return true;
   }

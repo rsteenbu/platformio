@@ -43,6 +43,7 @@ int debug = 0;
 char msg[40];
 LCD * lcd = new LCD();
 MOTION * motion = new MOTION(D7); 
+//IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, false, &mcp);
 TimerRelay * Mister = new TimerRelay(D3);
 
 void handleDebug() {
@@ -132,13 +133,16 @@ void handleSensors() {
 }
 
 void handleStatus() {
-  time_t now;
-  now = time(nullptr);
+  time_t now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
   JsonObject switches = doc.createNestedObject("switches");
 
   switches["mister"]["state"] = Mister->state();
+  switches["mister"]["active"] = Mister->active;
   switches["mister"]["Time Left"] = Mister->timeLeftToRun;
+  switches["mister"]["Next Run Time"] = Mister->nextTimeToRun;
+  switches["mister"]["Last Run Time"] = Mister->prettyOnTime;
+
   JsonObject sensors = doc.createNestedObject("sensors");
 
   for (myDHT* sensor : DHTSensors) {
@@ -172,7 +176,10 @@ void setup() {
 
   // Setup the Relay
   Mister->setup("misting_system");
-  Mister->setRuntime(10);
+  Mister->setRuntime(15);
+  Mister->setEveryDayOn();
+  Mister->setStartTimeFromString("7:00");
+  Mister->setStartTimeFromString("21:00");
 
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);
@@ -231,6 +238,9 @@ void setup() {
 time_t prevTime = 0;
 time_t now = 0;
 bool misterRan = false;
+int misterStatus = 0;
+int prevMisterStatus = 0;
+int humidity = -1;
 
 void loop() {
   ArduinoOTA.handle();
@@ -250,12 +260,33 @@ void loop() {
     syslog.log(LOG_INFO, "Nobody detected, turned backlight off");
   }
 
-  // Handle mister API requests
-  Mister->handle();
 
   // Gather data from sensors, only supported up to every 2s
   if ( now % 2 == 0 ) { 
-    for (myDHT* sensor : DHTSensors) { sensor->handle(); }
+    for (myDHT* sensor : DHTSensors) { 
+      sensor->handle(); 
+      // don't mist if above 50% humidity
+      humidity = sensor->getHumidity();
+      if (Mister->active && humidity > 50) {
+        Mister->setInActive();
+        syslog.log(LOG_INFO, "Setting mister INACTIVE");
+      } 
+      if (!Mister->active && humidity < 49) {
+	Mister->setActive();
+        syslog.log(LOG_INFO, "Setting mister ACTIVE");
+     }
+    }
+  }
+  
+  // Handle mister API requests
+  misterStatus = Mister->handle();
+  // mister changed state
+  if (prevMisterStatus != misterStatus) {
+    if (Mister->on) {
+	syslog.logf(LOG_INFO, "Scheduled mister run started, humidty at %d: ", humidity);
+    } else {
+	syslog.logf(LOG_INFO, "Scheduled mister run finished, humidty at %d: ", humidity);
+    }
   }
 
   // Update the LCD screen every 1 sec

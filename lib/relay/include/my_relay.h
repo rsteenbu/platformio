@@ -91,6 +91,7 @@ class TimerRelay: public Relay {
 
   public:
     int runTime = 0;
+    bool active = true;
     char timeLeftToRun[6];
     char nextTimeToRun[18];
     Array<int,7> runDays;
@@ -100,6 +101,8 @@ class TimerRelay: public Relay {
     TimerRelay(int a);
     TimerRelay (int a, Adafruit_MCP23X17* b);
 
+    void setActive();
+    void setInActive();
     void setRuntime(int a);
     void setRuntimeMinutes(int a);
     int getSecondsLeft();
