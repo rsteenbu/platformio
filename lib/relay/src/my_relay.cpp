@@ -67,7 +67,11 @@ void Relay::setup() {
   // iternate through one on off cycle to work the kinks out
   internalOn(); internalOff();
 
-  configTime(MYTZ, "pool.ntp.org");
+#ifdef ESP32
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+#else
+  configTime(MYTZ, ntpServer);
+#endif
   onTime = offTime = time(nullptr);
   strcpy(prettyOnTime,"None");
   strcpy(prettyOffTime,"None");
@@ -439,13 +443,9 @@ bool TimerRelay::handle() {
   // only check every second
   if ( now == prevTime ) return false;
 
-  if (now != prevTime)
-  {
-    setTimeLeftToRun();
-    setNextTimeToRun();
-  }
-
-  if ( now == prevTime ) return false;
+  //uptime the time left to run every second
+  setTimeLeftToRun();
+  setNextTimeToRun();
 
   // if we don't have runtime set, then just return
   if ( initialRunTime == 0 ) return false;
@@ -542,15 +542,12 @@ bool IrrigationRelay::handle() {
   prevTime = now;
   now = time(nullptr);
 
-  //uptime the time left to run every second
-  if (now != prevTime)
-  {
-    setTimeLeftToRun();
-    setNextTimeToRun();
-  }
-
-  // only process the rest every 5 seconds
+  // only process the rest every 1 second
   if ( now == prevTime ) return false;
+
+  //uptime the time left to run every second
+  setTimeLeftToRun();
+  setNextTimeToRun();
 
   // set the soilMoisture level on every loop
   if (soilMoistureSensor) checkSoilMoisture();

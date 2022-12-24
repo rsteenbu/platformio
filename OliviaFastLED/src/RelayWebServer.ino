@@ -23,11 +23,14 @@
 #include <SPI.h>
 #include <FastLED.h>
 
+#include <my_relay.h>
+Relay * LED_Switch = new Relay(4);
 
 #ifdef ESP32
 WebServer server(80);
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 8*60*60*-1; const int   daylightOffset_sec = 3600;
+const long  gmtOffset_sec = 8*60*60*-1;
+const int   daylightOffset_sec = 3600;
 #else
 ESP8266WebServer server(80);
 #define MYTZ TZ_America_Los_Angeles
@@ -47,7 +50,7 @@ int debug = 0;
 char msg[40];
 
 #define NUM_LEDS      300
-# define DATA_PIN        5
+#define DATA_PIN        5
 #define VOLTS          12
 #define MAX_MA       4000
 
@@ -120,9 +123,11 @@ void setup() {
 
   server.on("/debug", handleDebug);
   server.on("/status", handleStatus);
+  //TODO make the url thingy showable in status
+  server.on("/ledswitch", handleLedStrip);
   server.begin();
 
-
+  LED_Switch->setup("ledswitch");
 
   FastLED.setMaxPowerInVoltsAndMilliamps( VOLTS, MAX_MA);
 //  FastLED.addLeds<WS2815, RX, GRB>(leds, NUM_LEDS);
@@ -158,6 +163,11 @@ void handleStatus() {
   time_t now;
   now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
+  JsonObject switches = doc.createNestedObject("switches");
+
+  switches[LED_Switch->name]["state"] = LED_Switch->state();
+  switches[LED_Switch->name]["Last On Time"] = LED_Switch->prettyOnTime;
+  switches[LED_Switch->name]["Last Off Time"] = LED_Switch->prettyOffTime;
 
   doc["debug"] = debug;
 
@@ -178,23 +188,41 @@ void handleStatus() {
   }
 }
 
+void handleLedStrip() {
+  if (server.arg("state") == "on") {
+    LED_Switch->switchOn();
+    syslog.logf(LOG_INFO, "Turned %s on", LED_Switch->name);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    LED_Switch->switchOff();
+    syslog.logf(LOG_INFO, "Turned %s off", LED_Switch->name);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "status") {
+    server.send(200, "text/plain", LED_Switch->on ? "1" : "0");
+  } else {
+    server.send(404, "text/plain", "ERROR: unknown mister command");
+  }
+}
+
 void loop() {
   ArduinoOTA.handle();
   server.handleClient();
 
   time_t now = time(nullptr);
 
-  EVERY_N_SECONDS( SECONDS_PER_PALETTE ) { 
-    chooseNextColorPalette( gTargetPalette ); 
-  }
-  
-  EVERY_N_MILLISECONDS( 10 ) {
-    nblendPaletteTowardPalette( gCurrentPalette, gTargetPalette, 12);
-  }
+  if (LED_Switch->status()) {
+    EVERY_N_SECONDS( SECONDS_PER_PALETTE ) { 
+      chooseNextColorPalette( gTargetPalette ); 
+    }
 
-  drawTwinkles( leds);
-  
-  FastLED.show();
+    EVERY_N_MILLISECONDS( 10 ) {
+      nblendPaletteTowardPalette( gCurrentPalette, gTargetPalette, 12);
+    }
+
+    drawTwinkles( leds);
+
+    FastLED.show();
+  }
 
 }
 

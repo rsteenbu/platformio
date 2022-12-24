@@ -1,10 +1,15 @@
 #ifndef RELAY_H
 #define RELAY_H
 
-#define MYTZ TZ_America_Los_Angeles
-#include <time.h>                       // time() ctime()
+#ifdef ESP32
+#include <ESPmDNS.h>
+#else
 #include <sys/time.h>                   // struct timeval
 #include <TZ.h>
+#define MYTZ TZ_America_Los_Angeles
+#endif
+
+#include <time.h>                       // time() ctime()
 #include <Array.h>
 #include <Wire.h>
 #include "Adafruit_MCP23X17.h"
@@ -12,11 +17,15 @@
 #include <Adafruit_ADS1X15.h>
 #include <my_veml.h>
 
+
 class Relay {
   int onVal = HIGH;
   int offVal = LOW;
   Adafruit_MCP23X17* mcp;
   bool i2cPins = false;
+  const char* ntpServer = "pool.ntp.org";
+  const long  gmtOffset_sec = 8*60*60*-1;
+  const int   daylightOffset_sec = 3600;
 
   protected:
     int pin;
