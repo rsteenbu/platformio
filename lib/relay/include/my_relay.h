@@ -207,4 +207,3 @@ class DuskToDawnScheduleRelay: public ScheduleRelay {
 };
 
 #endif
-

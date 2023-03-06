@@ -1,9 +1,5 @@
 #ifndef MYMOTION_H
 #define MYMOTION_H
-#include <time.h>                       // time() ctime()
-#include <sys/time.h>                   // struct timeval
-#include <coredecls.h>                  // settimeofday_cb()
-#include <TZ.h>
 #include <Wire.h>
 #include "Adafruit_MCP23X17.h"
 
