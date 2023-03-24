@@ -64,6 +64,8 @@ void setup() {
   WiFi.hostname(hostname);
   Serial.print("Hostname set to: ");
   Serial.println(hostname);
+  Serial.print("Syslog server set to: ");
+  Serial.println(SYSLOG_SERVER);
   IPAddress ip = WiFi.localIP();
   syslog.logf(LOG_INFO, "%s Alive! at IP: %d.%d.%d.%d", hostname, ip[0], ip[1], ip[2], ip[3]);
 
