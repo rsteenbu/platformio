@@ -61,24 +61,33 @@ Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, 
 int debug = 0;
 char msg[40];
 
-//enum colors = { red = RED, green = GREEN, blue = BLUE, white = WHITE, YELLOW, CYAN, MAGENTA, PURPLE, ORANGE, PINK, GRAY, ULTRAWHITE };
 
 using namespace std;
 
 class myColors {
   public:
-    enum values { red = RED, green = GREEN, blue = BLUE, white = WHITE };
+    enum values { red = RED, green = GREEN, blue = BLUE, white = WHITE, yellow = YELLOW, cyan = CYAN, magenta = MAGENTA, purple = PURPLE, orange = ORANGE, pink = PINK, gray = GRAY, ultrawhite = ULTRAWHITE };
     int currentColorIndex;
-    values index[4] = {values::red, values::green, values::blue, values::white};
+    values index[12] = {values::red, values::green, values::blue, values::white, 
+                        values::yellow, values::cyan, values::magenta, values::purple, 
+                        values::orange, values::pink, values::gray, values::ultrawhite}; 
     //constructors
     myColors();
 
     const char* currentName() {
       switch(index[currentColorIndex]) {
-        case values::red   : return "red";   break;
-        case values::green : return "green"; break;
-        case values::blue  : return "blue";  break;
-        case values::white : return "white";  break;
+        case values::red        : return "red";        break;
+        case values::green      : return "green";      break;
+        case values::blue       : return "blue";       break;
+        case values::white      : return "white";      break;
+        case values::yellow     : return "yellow";     break;
+        case values::cyan       : return "cyan";       break;
+        case values::magenta    : return "magenta";    break;
+        case values::purple     : return "purple";     break;
+        case values::orange     : return "orange";     break;
+        case values::pink       : return "pink";       break;
+        case values::gray       : return "gray";       break;
+        case values::ultrawhite : return "ultrawhite"; break;
       }
       return "undefined";
     }
@@ -103,9 +112,10 @@ myColors::myColors () {
   currentColorIndex = 0;
 }
 
+// the three colors used by ws2812fx
+const uint32_t colors[3] = {RED, GREEN, BLUE};
+// all the colors available to use and how to use them
 myColors led_color;
-//Colors * led_color = new Colors();
-//Relay * LED_Switch = new Relay(RELAY_PIN);
 
 void setup() {
   Serial.begin(115200);
@@ -139,9 +149,6 @@ void setup() {
   if (!lcd->begin(LCD_COLS, LCD_ROWS))  {
     syslog.log(LOG_INFO, "LCD Initialization failed");
   }
-  lcd->print(led_color.currentName());
-//  lcd->cursor();
-  lcd->blink();
   lcd->setCursor(0, 0);
 
   // Rotary Encoder setup
@@ -175,15 +182,10 @@ void setup() {
   ws2812fx.init();
   ws2812fx.setBrightness(32);
 
-  // create two active segments
-  //ws2812fx.setSegment(0, 0, LED_COUNT-1, FX_MODE_RAINBOW_CYCLE, BLACK, 5000, NO_OPTIONS);
-  ws2812fx.setSegment(0, 0, LED_COUNT-1, FX_MODE_STATIC, WHITE, 2000, NO_OPTIONS);
+  // create the active segments
+  ws2812fx.setSegment(0, 0, LED_COUNT-1, FX_MODE_STATIC, ULTRAWHITE, 2000, NO_OPTIONS);
 
   // create additional "idle" segments that will be activated later
-  //ws2812fx.setIdleSegment(1, 0, LED_COUNT-1, FX_MODE_TWINKLEFOX, BLACK, 3000, NO_OPTIONS);
-  //ws2812fx.setIdleSegment(2, 0, LED_COUNT-1, FX_MODE_MERRY_CHRISTMAS, BLACK, 2000, NO_OPTIONS);
-  const uint32_t colors[3] = {RED, GREEN, BLUE};
-
   ws2812fx.setIdleSegment(1, 0, LED_COUNT-1, FX_MODE_BLINK, colors, 3000, NO_OPTIONS);
   ws2812fx.setIdleSegment(2, 0, LED_COUNT-1, FX_MODE_BREATH, colors, 3000, NO_OPTIONS);
   ws2812fx.setIdleSegment(3, 0, LED_COUNT-1, FX_MODE_COLOR_WIPE, colors, 3000, NO_OPTIONS);
@@ -432,6 +434,17 @@ uint8_t switchMode(int direction) {
     return(newMode);
 }
 
+
+void homeDisplay() {
+  uint8_t segment = *(ws2812fx.getActiveSegments());
+  uint8_t mode = ws2812fx.getMode(segment); 
+  lcd->setCursor(0,0);
+  lcd->clear();
+  lcd->print(ws2812fx.getModeName(mode));
+}
+
+
+bool activity = false;
 void loop() {
   ArduinoOTA.handle();
   server.handleClient();
@@ -441,17 +454,18 @@ void loop() {
     ledState = 0;
   }
 
-  if (encoderActivityTime + 1 * 1000 < millis() && lcd->state) {
 //    lcd->setBackLight(false);
-    /*
-    if (millis() % 300 == 0) {
+  if (encoderActivityTime + 5 * 1000 < millis() && lcd->state) {
+
       uint8_t segment = *(ws2812fx.getActiveSegments());
       uint8_t mode = ws2812fx.getMode(segment); 
-      lcd->setCursor(0,0);
-      lcd->scrollDisplayLeft();
-      //lcd->print(ws2812fx.getModeName(mode));
-    }
-    */
+
+      if (activity) {
+	activity = false;
+	homeDisplay();
+      }
+  } else {
+    activity = true;
   }
 
   // Do the encoder reading and processing
@@ -463,6 +477,10 @@ void loop() {
     LED_Switch->switchOff();
     syslog.log(LOG_INFO, "Olivia left cubby, turned her LED lights off");
   }
+
+//  if (motion->activity()) { 
+//    syslog.log(LOG_INFO, "Motion detected");
+//  }
 
   time_t now = time(nullptr);
 
@@ -516,10 +534,31 @@ void handleRotate(int8_t rotation) {
   }
 }
 
+ws2812fxColorIndex = 0;
+selectingColor = false;
 void handlePressRotate(int8_t rotation) {
   encoderActivityTime = millis();
+  selectingColor true;
+
+  if (rotation > 0) {
+    ws2812fxColorIndex = (ws2812fxColorIndex + 1) % 3;
+  } else {
+    if (ws2812fxColorIndex == 0) ws2812fxColorIndex = 2;
+    else ws2812fxColorIndex = (ws2812fxColorIndex - 1) % 3;
+  }
 
   lcd->clear();
+  lcd->print("LED Color ");
+  lcd->print(ws2812fxColorIndex+1);
+  lcd->print(":");
+}
+
+void handlePressRotate1(int8_t rotation) {
+  encoderActivityTime = millis();
+
+  lcd->setCursor(0, 1);
+  lcd->print("                    ");
+  lcd->setCursor(0, 1);
   if (rotation > 0) {
     led_color.nextColor();
     lcd->print(led_color.currentName());
@@ -529,9 +568,10 @@ void handlePressRotate(int8_t rotation) {
   }
 }
 
-void handlePressRotateRelease() {
+void handlePressRotateRelease1() {
   uint8_t segment = *(ws2812fx.getActiveSegments());
   ws2812fx.setColor(segment, led_color.currentColor());
+  homeDisplay();
 }
 
 void handlePress() {
