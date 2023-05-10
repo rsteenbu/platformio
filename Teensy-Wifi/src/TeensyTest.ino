@@ -9,7 +9,7 @@
 #include <teensy_relay.h>
 
 int debug = 0;
-teensyRelay * XmasTree = new teensyRelay(22);
+teensyRelay * Switch = new teensyRelay(22);
 
 WiFiServer server(80);
 WiFiUdpSender udpClient;
@@ -33,7 +33,7 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
   Serial1.begin(115200);
-  XmasTree->setup("xmastree");
+  Switch->setup("MySwitch");
 
   WiFi.init(Serial1);
 
@@ -113,9 +113,9 @@ void handleStatus(WiFiClient& client) {
   JsonObject switches = doc.createNestedObject("switches");
   JsonObject sensors = doc.createNestedObject("sensors");
 
-  switches[XmasTree->name]["state"] = XmasTree->state();
-  switches[XmasTree->name]["Last On Time"] = XmasTree->prettyOnTime;
-  switches[XmasTree->name]["Last Off Time"] = XmasTree->prettyOffTime;
+  switches[Switch->name]["state"] = Switch->state();
+  switches[Switch->name]["Last On Time"] = Switch->prettyOnTime;
+  switches[Switch->name]["Last Off Time"] = Switch->prettyOffTime;
   int lightLevel = 0;
   lightLevel = analogRead(A9);
   sensors["lightLevel"] = lightLevel;
@@ -151,26 +151,26 @@ void handleNotFound(WiFiClient& client) {
   httpReply.send( message );
 }
 
-void handleTree(ArduinoHttpServer::StreamHttpRequest<1024>& httpRequest, WiFiClient& client) {
+void handleSwitch(ArduinoHttpServer::StreamHttpRequest<1024>& httpRequest, WiFiClient& client) {
   if (httpRequest.getResource()[1] == "status") {
-    Serial.println("Returning status for Tree state");
+    Serial.println("Returning switch status");
     ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
-    String msg = XmasTree->state();
+    String msg = Switch->state();
     httpReply.send(msg);
   } else if (httpRequest.getResource()[1] == "switchOn") {
-    XmasTree->switchOn();
-    Serial.println("Turned tree on");
+    Switch->switchOn();
+    Serial.println("Turned switch on");
     ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
     httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s on", XmasTree->name);
+    syslog.logf(LOG_INFO, "Turned %s on", Switch->name);
   } else if (httpRequest.getResource()[1] == "switchOff") {
-    XmasTree->switchOff();
-    Serial.println("Turned tree off");
+    Switch->switchOff();
+    Serial.println("Turned switch off");
     ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
     httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s off", XmasTree->name);
+    syslog.logf(LOG_INFO, "Turned %s off", Switch->name);
   } else {
-    String msg = "ERROR: uknown tree command: ";
+    String msg = "ERROR: uknown switch command: ";
     msg += httpRequest.getResource()[1];
     msg += "\n\n";
     ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
@@ -195,8 +195,8 @@ void loop() {
 
          if (httpRequest.getResource().toString() == "/status") {
            handleStatus(client);
-         } else if (httpRequest.getResource()[0] == "tree") {
-           handleTree(httpRequest, client);
+         } else if (httpRequest.getResource()[0] == "switch") {
+           handleSwitch(httpRequest, client);
 	 } else {
            handleNotFound(client);
 	 }
