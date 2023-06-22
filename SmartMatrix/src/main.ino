@@ -1,35 +1,7 @@
-#include <WiFiUdp.h>
-#include <Syslog.h>
+#include "wifi_config.h"
+
 #include <ArduinoJson.h>
-#include <Timezone.h> 
-#include <WiFiEspAT.h>
-#include <ArduinoHttpServer.h>
-
-#include <my_ntp.h>
-#include <teensy_relay.h>
-
 #include <SD.h>
-
-int debug = 0;
-teensyRelay * Switch = new teensyRelay(22);
-
-WiFiServer server(80);
-WiFiUdpSender udpClient;
-WiFiUDP Udp;
-
-NTP ntp;
-
-// This device info
-const char* APP_NAME = "system";
-Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
-
-#define JSON_SIZE 700
-#define MAX_REQUEST_SIZE 1024
-
-// US Pacific Time Zone 
-TimeChangeRule usPST = {"PST", Second, Sun, Mar, 2, -420};  // Daylight time = UTC - 7 hours
-TimeChangeRule usPDT = {"PDT", First, Sun, Nov, 2, -480};   // Standard time = UTC - 8 hours
-Timezone usPacific(usPST, usPDT);
 
 // SmartMatrix stuff
 #define USE_ADAFRUIT_GFX_LAYERS
@@ -38,34 +10,20 @@ Timezone usPacific(usPST, usPDT);
 #include <SmartMatrix.h>
 #include <Fonts/Org_01.h>
 
-
-
-#define COLOR_DEPTH 24                  // Choose the color depth used for storing pixels in the layers: 24 or 48 (24 is good for most sketches - If the sketch uses type `rgb24` directly, COLOR_DEPTH must be 24)
-const uint16_t kMatrixWidth = 256;       // Set to the width of your display, must be a multiple of 8
-const uint16_t kMatrixHeight = 128;      // Set to the height of your display
-const uint8_t kRefreshDepth = 36;       // Tradeoff of color quality vs refresh rate, max brightness, and RAM usage.  36 is typically good, drop down to 24 if you need to.  On Teensy, multiples of 3, up to 48: 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48.  On ESP32: 24, 36, 48
-const uint8_t kDmaBufferRows = 4;       // known working: 2-4, use 2 to save RAM, more to keep from dropping frames and automatically lowering refresh rate.  (This isn't used on ESP32, leave as default)
-//const uint8_t kPanelType = SM_PANELTYPE_HUB75_32ROW_MOD16SCAN;   // Choose the configuration that matches your panels.  See more details in MatrixCommonHub75.h and the docs: https://github.com/pixelmatix/SmartMatrix/wiki
-const uint8_t kPanelType = SM_PANELTYPE_HUB75_64ROW_MOD32SCAN;   // Choose the configuration that matches your panels.  See more details in MatrixCommonHub75.h and the docs: https://github.com/pixelmatix/SmartMatrix/wiki
-const uint32_t kMatrixOptions = (SM_HUB75_OPTIONS_NONE);        // see docs for options: https://github.com/pixelmatix/SmartMatrix/wiki
+#define COLOR_DEPTH 24
+const uint16_t kMatrixWidth = 256;
+const uint16_t kMatrixHeight = 128;
+const uint8_t kRefreshDepth = 36;
+const uint8_t kDmaBufferRows = 4;
+const uint8_t kPanelType = SM_PANELTYPE_HUB75_64ROW_MOD32SCAN;
+const uint32_t kMatrixOptions = (SM_HUB75_OPTIONS_NONE);
 
 SMARTMATRIX_ALLOCATE_BUFFERS(matrix, kMatrixWidth, kMatrixHeight, kRefreshDepth, kDmaBufferRows, kPanelType, kMatrixOptions);
-//SMARTMATRIX_ALLOCATE_GFX_MONO_LAYER(scrollingLayer, kMatrixWidth, kMatrixHeight, kMatrixWidth*3, kMatrixHeight, COLOR_DEPTH, kScrollingLayerOptions);
 const uint8_t kMonoLayerOptions = (SM_GFX_MONO_OPTIONS_NONE);
 SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(scrollingLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kMonoLayerOptions);
 
-// There are two Adafruit_GFX compatible layers, a Mono layer and an RGB layer, and this example sketch works with either (choose one):
-#if 1
-  const uint8_t kBackgroundLayerOptions = (SM_BACKGROUND_OPTIONS_NONE);
-  SMARTMATRIX_ALLOCATE_BACKGROUND_LAYER(backgroundLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kBackgroundLayerOptions);
-#else
-  const uint8_t kMonoLayerOptions = (SM_GFX_MONO_OPTIONS_NONE);
-  SMARTMATRIX_ALLOCATE_GFX_MONO_LAYER(backgroundLayer, kMatrixWidth, kMatrixHeight, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kMonoLayerOptions);
-  
-  // these backwards compatible ALLOCATE macros also work:
-  //SMARTMATRIX_ALLOCATE_SCROLLING_LAYER(backgroundLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kMonoLayerOptions);
-  //SMARTMATRIX_ALLOCATE_INDEXED_LAYER(backgroundLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kMonoLayerOptions);
-#endif
+const uint8_t kBackgroundLayerOptions = (SM_BACKGROUND_OPTIONS_NONE);
+SMARTMATRIX_ALLOCATE_BACKGROUND_LAYER(backgroundLayer, kMatrixWidth, kMatrixHeight, COLOR_DEPTH, kBackgroundLayerOptions);
 
 // Assign human-readable names to some common 16-bit color values:
 #define BLACK   0x0000
@@ -370,75 +328,6 @@ unsigned long testFilledRoundRects() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial1.begin(115200);
-  Switch->setup("MySwitch");
-
-  WiFi.init(Serial1);
-
-  if (WiFi.status() == WL_NO_MODULE) {
-    Serial.print("Communication with WiFi module failed!");
-    Serial.println(WiFi.status());
-    // don't continue
-    while (true);
-  }
-
-  if (!WiFi.setHostname(DEVICE_HOSTNAME)) {
-    Serial.println("Setting hostname failed");
-  }
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  // waiting for connection to Wifi network set with the SetupWiFiConnection sketch
-  Serial.println("Waiting for connection to WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print('.');
-  }
-  Serial.print("Connected to ");
-  Serial.println(WIFI_SSID);
-
-  // start the http webserver
-  server.begin();
-
-  char hostname[40];
-  WiFi.hostname(hostname);
-  Serial.print("Hostname set to: ");
-  Serial.println(hostname);
-  Serial.print("Syslog server set to: ");
-  Serial.println(SYSLOG_SERVER);
-  IPAddress ip = WiFi.localIP();
-  syslog.logf(LOG_INFO, "%s Alive! at IP: %d.%d.%d.%d", hostname, ip[0], ip[1], ip[2], ip[3]);
-
-  Udp.begin(2390);
-  // wait to see if a reply is available
-  delay(1000);
-
-  int tries = 0;
-  while (! ntp.setup(Udp) && tries++ < 5) {
-    if (debug) {
-      syslog.logf(LOG_INFO, "Getting NTP time failed, try %d", tries);
-    }
-    delay(1000);
-  }
-  if (tries == 5) {
-     syslog.log(LOG_INFO, "ERROR, time not set from NTP server");
-  }
-
-  // Set the system time from the NTP epoch
-  setSyncInterval(300);
-  setSyncProvider(getTeensy3Time);
-  delay(100);
-  if (timeStatus()!= timeSet) {
-    Serial.println("Unable to sync with the RTC");
-  } else {
-    Serial.println("RTC has set the system time");
-  }
-
-  if (ntp.epoch == 0) {
-    syslog.log(LOG_INFO, "Setting NTP time failed");
-  } else {
-    time_t pacific = usPacific.toLocal(ntp.epoch);
-    Teensy3Clock.set(pacific); // set the RTC
-    setTime(pacific);
-  }
 
   // Initialize the SD Card interface
   /*
@@ -458,83 +347,10 @@ void setup() {
   matrix.addLayer(&scrollingLayer); 
   matrix.begin();
 
-  testFilledTriangles();
+  backgroundLayer.fillScreen(WHITE);
+  //testFilledTriangles();
 
   backgroundLayer.swapBuffers();
-}
-
-time_t getTeensy3Time() {
-  return Teensy3Clock.get();
-}
-
-void handleStatus(WiFiClient& client) {
-  StaticJsonDocument<JSON_SIZE> doc;
-  JsonObject switches = doc.createNestedObject("switches");
-  JsonObject sensors = doc.createNestedObject("sensors");
-
-  switches[Switch->name]["state"] = Switch->state();
-  switches[Switch->name]["Last On Time"] = Switch->prettyOnTime;
-  switches[Switch->name]["Last Off Time"] = Switch->prettyOffTime;
-  int lightLevel = 0;
-  lightLevel = analogRead(A9);
-  sensors["lightLevel"] = lightLevel;
-  doc["debug"] = debug;
-
-  // 11/16/21 20:17:07
-  char timeString[20];
-  sprintf(timeString, "%02d/%02d/%04d %02d:%02d:%02d", month(), day(), year(), hour(), minute(), second());
-  doc["time"] = timeString;
-
-  size_t jsonDocSize = measureJsonPretty(doc);
-  if (jsonDocSize > JSON_SIZE) {
-    char msg[40];
-    sprintf(msg, "ERROR: JSON message too long, %d", jsonDocSize);
-
-    ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "500");
-    httpReply.send( msg );
-
-  } else {
-    String httpResponse;
-    serializeJsonPretty(doc, httpResponse);
-
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "application/json");
-    httpReply.send(httpResponse);
-  }
-}
-
-void handleNotFound(WiFiClient& client) {
-  Serial.println("Handling not found http request");
-  String message = F("File Not Found\n\n");
-
-  ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
-  httpReply.send( message );
-}
-
-void handleSwitch(ArduinoHttpServer::StreamHttpRequest<1024>& httpRequest, WiFiClient& client) {
-  if (httpRequest.getResource()[1] == "status") {
-    Serial.println("Returning switch status");
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
-    String msg = Switch->state();
-    httpReply.send(msg);
-  } else if (httpRequest.getResource()[1] == "switchOn") {
-    Switch->switchOn();
-    Serial.println("Turned switch on");
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
-    httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s on", Switch->name);
-  } else if (httpRequest.getResource()[1] == "switchOff") {
-    Switch->switchOff();
-    Serial.println("Turned switch off");
-    ArduinoHttpServer::StreamHttpReply httpReply(client, "text/html");
-    httpReply.send("");
-    syslog.logf(LOG_INFO, "Turned %s off", Switch->name);
-  } else {
-    String msg = "ERROR: uknown switch command: ";
-    msg += httpRequest.getResource()[1];
-    msg += "\n\n";
-    ArduinoHttpServer::StreamHttpErrorReply httpReply(client, "text/html", "400");
-    httpReply.send(msg);
-  }
 }
 
 void loop() {
@@ -546,6 +362,8 @@ void loop() {
   scrollingLayer.setFont(font6x10);
   scrollingLayer.start("Ever since I was a young boy, I played the silver ball", 1);
   while (scrollingLayer.getStatus());
+
+  backgroundLayer.fillScreen(GREEN);
 
   WiFiClient client( server.available() );
 
@@ -562,8 +380,6 @@ void loop() {
 
         if (httpRequest.getResource().toString() == "/status") {
           handleStatus(client);
-        } else if (httpRequest.getResource()[0] == "switch") {
-          handleSwitch(httpRequest, client);
         } else {
           handleNotFound(client);
         }

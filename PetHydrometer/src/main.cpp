@@ -178,8 +178,8 @@ void setup() {
   Mister->setup("misting_system");
   Mister->setRuntime(15);
   Mister->setEveryDayOn();
-  Mister->setStartTimeFromString("7:00");
-  Mister->setStartTimeFromString("21:00");
+  Mister->setStartTimeFromString("8:00");
+  Mister->setStartTimeFromString("20:00");
 
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);

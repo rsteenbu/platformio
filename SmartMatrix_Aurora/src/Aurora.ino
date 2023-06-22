@@ -1,3 +1,9 @@
+#define JSON_SIZE 700
+#define MAX_REQUEST_SIZE 1024
+uint8_t debug=0;
+
+#include "wifi_config.h"
+
 #include "matrix.h"
 #include "Effects.h"
 #include "Drawable.h"
@@ -94,10 +100,34 @@ void loop() {
     }
     pattern->drawFrame();
     matrix->show();
+
+    if (wifi_connected) {
+      WiFiClient client( server.available() );
+
+      if (client.connected()) {
+	// Connected to client. Allocate and initialize StreamHttpRequest object.
+	ArduinoHttpServer::StreamHttpRequest<1024> httpRequest(client);
+
+	// Parse the request.
+	if (httpRequest.readRequest()) {
+	  // Retrieve 2nd part of HTTP resource.
+	  // E.g.: "on" from "/api/sensors/on"
+	  Serial.print("getResource[0]: ");
+	  Serial.println(httpRequest.getResource()[0]);
+
+	  if (httpRequest.getResource().toString() == "/status") {
+	    handleStatus(client);
+	  }
+	}
+	client.stop();
+      }
+    }
 }
 
-
 void setup() {
+
+    wifi_setup();
+
     matrix_setup();
     effects.leds = matrixleds;
     effects.Setup();
