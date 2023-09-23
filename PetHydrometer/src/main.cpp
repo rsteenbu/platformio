@@ -266,13 +266,13 @@ void loop() {
   if ( now % 2 == 0 ) { 
     for (myDHT* sensor : DHTSensors) { 
       sensor->handle(); 
-      // don't mist if above 50% humidity
+      // don't mist if above 60% humidity
       humidity = sensor->getHumidity();
-      if (Mister->active && humidity > 50) {
+      if (Mister->active && humidity > 60) {
         Mister->setInActive();
         syslog.log(LOG_INFO, "Setting mister INACTIVE");
       } 
-      if (!Mister->active && humidity < 49) {
+      if (!Mister->active && humidity < 59) {
 	Mister->setActive();
         syslog.log(LOG_INFO, "Setting mister ACTIVE");
      }
