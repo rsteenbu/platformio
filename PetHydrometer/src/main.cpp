@@ -176,8 +176,9 @@ void setup() {
 
   // Setup the Relay
   Mister->setup("misting_system");
-  Mister->setRuntime(15);
+  Mister->setRuntime(45);
   Mister->setEveryDayOn();
+  // automatic runs at 8:00AM and 8:00PM
   Mister->setStartTimeFromString("8:00");
   Mister->setStartTimeFromString("20:00");
 
@@ -278,7 +279,7 @@ void loop() {
     }
   }
   
-  // Handle mister API requests
+  // Handle mister API requests and status changes
   misterStatus = Mister->handle();
   // mister changed state
   if (prevMisterStatus != misterStatus) {
