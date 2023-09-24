@@ -132,6 +132,26 @@ void handleSensors() {
   }
 }
 
+void handlePrometheus() {
+  for (myDHT* sensor : DHTSensors) {
+    String tempResponse = 
+      String("# HELP dht22_temperature Temperature measured by the DHT22 Sensor\n") +
+      String("# TYPE dht22_temperature gauge\n") +
+      String("dht22_temperature{scale=\"fahrenheit\"} ") + 
+      String(sensor->temp, DEC) + 
+      String("\n");
+      
+    String humidityResponse = 
+      String("# HELP dht22_humidity_percent Humidity percentage measured by the DHT22 Sensor\n") +
+      String("# TYPE dht22_humidity_percent gauge\n") +
+      String("dht22_humidity_percent ") + 
+      String(sensor->humid, DEC) +
+      String("\n");
+     
+    server.send(200, "text/plain; charset=utf-8", tempResponse + humidityResponse);
+  }
+}
+
 void handleStatus() {
   time_t now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
@@ -166,7 +186,7 @@ void handleStatus() {
   } else {
     String httpResponse;
     serializeJsonPretty(doc, httpResponse);
-    server.send(500, "text/plain", httpResponse);
+    server.send(200, "text/plain", httpResponse);
   }
 }
 
@@ -210,6 +230,7 @@ void setup() {
   server.on("/display", handleDisplay);
   server.on("/sensors", handleSensors);
   server.on("/status", handleStatus);
+  server.on("/prometheus", handlePrometheus);
   server.begin();
 
   if (!lcd->begin(16, 2))  {
