@@ -228,38 +228,39 @@ void TimerRelay::setTimeLeftToRun() {
 
 void TimerRelay::setNextTimeToRun() {
   struct tm *timeinfo = localtime(&now);
-  int currWeekDay = timeinfo->tm_wday;
-  int currHour = timeinfo->tm_hour;
-  int currMinute = timeinfo->tm_min;
-  int currSecond = timeinfo->tm_sec;
+  int thisDay = timeinfo->tm_wday;
+  int thisHour = timeinfo->tm_hour;
+  int thisMinute = timeinfo->tm_min;
+  int thisSecond = timeinfo->tm_sec;
 
   // if there are no start times set, just return
   if ( startTimesOfDay.size() == 0 ) {
     return;
   }
 
-  int currMinuteOfDay = (currHour * 60) + currMinute;
+  int currMinuteOfDay = (thisHour * 60) + thisMinute;
 
-  int timeFound = 0;
+  int startMinute = 0;
   int n;
   for ( n=0 ; n<7 ; n++ ) {
-    int dayOfWeek = (n + currWeekDay) & 7;
+    int dayFromThisDay = (n + thisDay) & 7;
 
     // Skip checking this day if we're not scheduled to run
-    if (! runDays[dayOfWeek]) continue;
+    if (! runDays[dayFromThisDay]) continue;
 
-    //check each startTime
+    //check each startTime(inMinutes)
     for (int i = 0; i < int(startTimesOfDay.size()); i++) {
-      // if it's today but the time we're looking it was before now, skip it
-      if ( (dayOfWeek == currWeekDay) && (startTimesOfDay[i] < currMinuteOfDay) ) continue;
-      // if we found a start time already and this is bigger, skip it
-      if ( timeFound && startTimesOfDay[i] > timeFound ) continue;
+      // if it's today but the time we're looking at was before now, skip it
+      if ( (dayFromThisDay == thisDay) && (startTimesOfDay[i] < currMinuteOfDay) ) continue;
+      // if we found a start time already and this one is bigger, skip it and keep the one we have
+      if ( startMinute && startTimesOfDay[i] > startMinute ) continue;
 
-      timeFound = startTimesOfDay[i];
+      startMinute = startTimesOfDay[i];
     }
 
-    if ( timeFound ) {
-      time_t startTime = now - currMinuteOfDay*60 + n*24*60*60 + timeFound*60 - currSecond;
+    if ( startMinute ) {
+      //                 (midnight of today) + (days from this day) + (the start time) 
+      time_t startTime = (now - currMinuteOfDay*60 - thisSecond) + (n*24*60*60) + startMinute*60;
       struct tm *timeinfo = localtime(&startTime);
       strftime (nextTimeToRun,18,"%D %T",timeinfo);
       return;
@@ -397,14 +398,14 @@ void TimerRelay::getWeekSchedule(char weekSchedule[8]) {
   weekSchedule[7] = '\0';
 }
 
-int TimerRelay::checkDayToRun(int weekDay) { 
-  return runDays[weekDay];
+int TimerRelay::checkDayToRun(int thisDay) { 
+  return runDays[thisDay];
 } 
 
 int TimerRelay::checkDayToRun() { 
   struct tm *timeinfo = localtime(&now);
-  int weekDay = timeinfo->tm_wday;
-  return runDays[weekDay];
+  int thisDay = timeinfo->tm_wday;
+  return runDays[thisDay];
 } 
 
 void TimerRelay::checkStartTime(String &timesToStart) {
@@ -419,12 +420,12 @@ void TimerRelay::checkStartTime(String &timesToStart) {
 bool TimerRelay::isTimeToStart() {
   time_t now = time(nullptr);
   struct tm *timeinfo = localtime(&now);
-  int currHour = timeinfo->tm_hour;
-  int currMinute = timeinfo->tm_min;
-  int weekDay = timeinfo->tm_wday;
+  int thisHour = timeinfo->tm_hour;
+  int thisMinute = timeinfo->tm_min;
+  int thisDay = timeinfo->tm_wday;
 
   for (int i = 0; i < int(startTimesOfDay.size()); i++) {
-    if (runDays[weekDay] && (((currHour * 60) + currMinute) == startTimesOfDay[i]) ) {
+    if (runDays[thisDay] && (((thisHour * 60) + thisMinute) == startTimesOfDay[i]) ) {
       // don't run twice in the same minute
       if (now - onTime > 60) return true;
     } 
@@ -484,49 +485,53 @@ IrrigationRelay::IrrigationRelay (const char* a, int b, bool c, const char* d, i
 }
 
 // IrrigationRelay methods
-// turn on the soilMoisture check at soilMoisturePercentageToRun
-void IrrigationRelay::setSoilMoistureSensor(int a, int b) {
-  soilMoistureSensor = true;
-  soilPin = a;
-  soilMoisturePercentageToRun = b;
+// turn on the moisture check at moisturePercentageToRun
+void IrrigationRelay::setMoistureSensor(int a, int b) {
+  moistureSensor = true;
+  moisturePin = a;
+  moisturePercentageToRun = b;
 }
 
-void IrrigationRelay::setSoilMoistureSensor(uint8_t a, int b, int c) {
-  soilMoistureSensor = true;
-  i2cSoilMoistureSensor = true;
+void IrrigationRelay::setMoistureSensor(uint8_t a, int b, int c) {
+  moistureSensor = true;
+  i2cMoistureSensor = true;
   ads.begin(a);
-  soilPin = b;
-  soilMoisturePercentageToRun = c;
+  moisturePin = b;
+  moisturePercentageToRun = c;
 }
 
-void IrrigationRelay::setSoilMoistureLimits(int a, int b) {
-  drySoilMoistureLevel = a;
-  wetSoilMoistureLevel = b;
+void IrrigationRelay::setMoistureLimits(int a, int b) {
+  dryMoistureLevel = a;
+  wetMoistureLevel = b;
 }
 
-void IrrigationRelay::checkSoilMoisture() {
-  double calibratedSoilMoistureLevel = soilMoistureLevel;
+void IrrigationRelay::setMoistureLevel(int n) {
+  moistureLevel = n;
+}
 
-  if (i2cSoilMoistureSensor) {
-    soilMoistureLevel = ads.readADC_SingleEnded(soilPin);
+void IrrigationRelay::checkMoisture() {
+  double calibratedMoistureLevel = moistureLevel;
+
+  if (i2cMoistureSensor) {
+    moistureLevel = ads.readADC_SingleEnded(moisturePin);
   } else {
-    soilMoistureLevel = analogRead(soilPin);
+    moistureLevel = analogRead(moisturePin);
   }
 
-  if (calibratedSoilMoistureLevel > drySoilMoistureLevel) {
-    calibratedSoilMoistureLevel = drySoilMoistureLevel;
+  if (calibratedMoistureLevel > dryMoistureLevel) {
+    calibratedMoistureLevel = dryMoistureLevel;
   }
-  if (calibratedSoilMoistureLevel < wetSoilMoistureLevel) {
-    calibratedSoilMoistureLevel = wetSoilMoistureLevel;
+  if (calibratedMoistureLevel < wetMoistureLevel) {
+    calibratedMoistureLevel = wetMoistureLevel;
   }
 
-  soilMoisturePercentage = 100 - (((calibratedSoilMoistureLevel - wetSoilMoistureLevel) / (drySoilMoistureLevel - wetSoilMoistureLevel)) * 100);
+  moisturePercentage = 100 - (((calibratedMoistureLevel - wetMoistureLevel) / (dryMoistureLevel - wetMoistureLevel)) * 100);
 
-  soilDry = (soilMoisturePercentage < soilMoisturePercentageToRun) ?  true : false;
+  dry = (moisturePercentage < moisturePercentageToRun) ?  true : false;
 }
 
 const char* IrrigationRelay::state() {
-  if (! soilDry) return "wet";
+  if (! dry) return "wet";
 
   if (on)
   {
@@ -545,12 +550,12 @@ bool IrrigationRelay::handle() {
   // only process the rest every 1 second
   if ( now == prevTime ) return false;
 
-  //uptime the time left to run every second
+  // uptime the time left to run every second
   setTimeLeftToRun();
   setNextTimeToRun();
 
-  // set the soilMoisture level on every loop
-  if (soilMoistureSensor) checkSoilMoisture();
+  // set the moisture level on every loop
+  if (moistureSensor) checkMoisture();
 
   // if we don't have runtime set, then just return
   if (initialRunTime == 0)  return false;
@@ -568,7 +573,7 @@ bool IrrigationRelay::handle() {
 
   // if we're on it started raining, turn it off
   // but ignore the scheduleOveride and stay running if it's set
-  if (on && !soilDry)
+  if (on && !dry)
   {
     switchOff();
     return true;
@@ -576,7 +581,7 @@ bool IrrigationRelay::handle() {
 
   // if we're not on, turn it on if it's the right day and time
   if ( !on && isTimeToStart() ) {
-    if (!soilDry) return false; 
+    if (!dry) return false; 
     switchOn();
     return true;
   }
@@ -618,14 +623,14 @@ bool ScheduleRelay::handle() {
   if ( scheduleOverride )  return false;
 
   struct tm *timeinfo = localtime(&now);
-  int currHour = timeinfo->tm_hour;
-  int currMinute = timeinfo->tm_min;
-  if ( ! on && findTime(currHour, currMinute, onTimes) ) {
+  int thisHour = timeinfo->tm_hour;
+  int thisMinute = timeinfo->tm_min;
+  if ( ! on && findTime(thisHour, thisMinute, onTimes) ) {
     switchOn();
     return true;
   }
 
-  if ( on && findTime(currHour, currMinute, offTimes) ) {
+  if ( on && findTime(thisHour, thisMinute, offTimes) ) {
     switchOff();
     return true;
   }
@@ -668,9 +673,9 @@ bool DuskToDawnScheduleRelay::handle() {
   }
 
   struct tm *timeinfo = localtime(&now);
-  int currHour = timeinfo->tm_hour;
+  int thisHour = timeinfo->tm_hour;
   // Switch on criteria: it's dark, the lights are not on and it's not the middle of the night
-  if ( lightLevel < dusk && ! on && !( currHour >= nightOffHour && currHour <= morningOnHour ) ) {
+  if ( lightLevel < dusk && ! on && !( thisHour >= nightOffHour && thisHour <= morningOnHour ) ) {
     timesLight = 0;
     timesDark++;
 
@@ -681,7 +686,7 @@ bool DuskToDawnScheduleRelay::handle() {
   }
 
   // Switch off criteria: the lights are on and either it's light or it's in the middle of the night
-  if (on && (lightLevel > dusk || ( currHour >= nightOffHour && currHour <= morningOnHour ))) {
+  if (on && (lightLevel > dusk || ( thisHour >= nightOffHour && thisHour <= morningOnHour ))) {
     timesDark = 0;
     timesLight++;
 

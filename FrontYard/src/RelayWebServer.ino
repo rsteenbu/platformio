@@ -45,7 +45,7 @@ Adafruit_SSD1306 display = Adafruit_SSD1306(128 /*width*/, 64 /*height*/, &Wire,
 int debug = 0;
 char msg[40];
 
-int const SOIL_PIN = A0;
+int const MOISTURE_PIN = A0;
 int const ONEWIRE_PIN = D7;
 
 // Thermometer Dallas OneWire
@@ -100,8 +100,8 @@ void setup() {
   irrigation->setup("frontyard");
   irrigation->setRuntime(10*60);
   irrigation->setStartTime(8, 15);
-  irrigation->setSoilMoistureSensor(SOIL_PIN, 70); // pin for analog read, percentage to run at
-  irrigation->setSoilMoistureLimits(660, 330); //dry level, wet level
+  irrigation->setMoistureSensor(MOISTURE_PIN, 70); // pin for analog read, percentage to run at
+  irrigation->setMoistureLimits(660, 330); //dry level, wet level
 
   // Start the HTTP server
   server.on("/debug", handleDebug);
@@ -214,9 +214,9 @@ void handleIrrigation() {
 }
 
 void handleSensors() {
-  if (server.arg("sensor") == "soilmoisture") {
+  if (server.arg("sensor") == "moisture") {
     char msg[10];
-    sprintf(msg, "%0.2f", irrigation->soilMoisturePercentage);
+    sprintf(msg, "%0.2f", irrigation->moisturePercentage);
     server.send(200, "text/plain", msg);
   } else if (server.arg("sensor") == "light") {
     char msg[10];
@@ -248,8 +248,8 @@ void handleStatus() {
   JsonObject sensors = doc.createNestedObject("sensors");
   sensors["temperature"] = temperature;
   sensors["lightLevel"] = lvLights->lightLevel;
-  sensors["soilMoistureLevel"] = irrigation->soilMoistureLevel;
-  sensors["soilMoisturePercentage"] = irrigation->soilMoisturePercentage;
+  sensors["moistureLevel"] = irrigation->moistureLevel;
+  sensors["moisturePercentage"] = irrigation->moisturePercentage;
   sensors[motionsensor->name]["state"] = motionsensor->activity();
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
@@ -295,7 +295,7 @@ void loop() {
   if ( now != prevTime )  {
     String reason;
     if ( irrigation->handle() ) {
-      syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", irrigation->name, irrigation->state(), irrigation->soilMoisturePercentage);
+      syslog.logf(LOG_INFO, "%s %s; Moisture: %f%%", irrigation->name, irrigation->state(), irrigation->moisturePercentage);
     } 
   }
 
@@ -341,7 +341,7 @@ void updateDisplay() {
       display.println(timeString);
       display.printf("Light Level: %d", lvLights->lightLevel);
       display.println();
-      display.printf("Soil Moisture: %0.2f", irrigation->soilMoisturePercentage);
+      display.printf("Moisture: %0.2f", irrigation->moisturePercentage);
       display.println();
       display.printf("Temperature: %2.2f", temperature);
       display.println();

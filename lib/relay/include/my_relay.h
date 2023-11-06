@@ -137,19 +137,19 @@ class TimerRelay: public Relay {
 // TODO: method to display time left to run
 // TODO: status of next scheduled run time in days, hours, minutes
 class IrrigationRelay: public TimerRelay {
-  int soilPin;
-  bool i2cSoilMoistureSensor = false;
-  int soilMoisturePercentageToRun = -1;
+  int moisturePin;
+  bool i2cMoistureSensor = false;
+  int moisturePercentageToRun = -1;
   // default limits - analog pin read frontyard
-  double drySoilMoistureLevel = 660;
-  double wetSoilMoistureLevel = 330;
+  int dryMoistureLevel = 660;
+  int wetMoistureLevel = 330;
   Adafruit_ADS1015 ads;     /* Use this for the 12-bit version */
 
   public:
-    bool soilMoistureSensor = false;
-    double soilMoisturePercentage = -1;
-    double soilMoistureLevel = -1;
-    bool soilDry = true;
+    bool dry = true;
+    bool moistureSensor = false;
+    int moisturePercentage = -1;
+    int moistureLevel = -1;
 
     //constructors
     IrrigationRelay (int a);
@@ -157,11 +157,12 @@ class IrrigationRelay: public TimerRelay {
     //"patio_pots",  7,       true,      "7:00",              3,            , '1111111'
     IrrigationRelay (const char* a, int b, bool c, const char* d, int e, bool f, Adafruit_MCP23X17* g);
 
-    // turn on the soilMoisture check at soilMoisturePercentageToRun
-    void setSoilMoistureSensor(int a, int b);
-    void setSoilMoistureSensor(uint8_t a, int b, int c);
-    void setSoilMoistureLimits(int a, int b);
-    void checkSoilMoisture();
+    // turn on the moisture check at moisturePercentageToRun
+    void setMoistureSensor(int a, int b);
+    void setMoistureSensor(uint8_t a, int b, int c);
+    void setMoistureLimits(int a, int b);
+    void checkMoisture();
+    void setMoistureLevel(int n);
     const char* state();
     bool handle();
 };

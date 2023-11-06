@@ -160,7 +160,6 @@ void loop() {
     currValues.uptimeSeconds = secondsUptime % 60;
     // airValue = 785
     // waterValue = 470
-    // soilmoisturepercent = map(soilMoistureValue, airValue, waterValue, 0, 100);
     currValues.lightLevel = analogRead(A0); 
     currValues.date = myTZ.dateTime("m/d/y");
     currValues.time = myTZ.dateTime("H:i");

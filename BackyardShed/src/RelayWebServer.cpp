@@ -121,8 +121,8 @@ void handleStatus() {
       matchFound = true;
       switches[relay->name]["State"] = relay->state();
       switches[relay->name]["Override"] = relay->scheduleOverride;
-      switches[relay->name]["Soil Moisture Level"] = relay->soilMoistureLevel;
-      switches[relay->name]["Soil Moisture Percentage"] = relay->soilMoisturePercentage;
+      switches[relay->name]["Moisture Level"] = relay->moistureLevel;
+      switches[relay->name]["Moisture Percentage"] = relay->moisturePercentage;
       switches[relay->name]["Time Left"] = relay->timeLeftToRun;
       switches[relay->name]["Last Run Time"] = relay->prettyOnTime;
       switches[relay->name]["Next Run Time"] = relay->nextTimeToRun;
@@ -271,14 +271,6 @@ void setup() {
   irz5->setup(); IrrigationZones.push_back(irz5);
   irz6->setup(); IrrigationZones.push_back(irz6);
 
-  // PatioPots irz1->setSoilMoistureSensor(0x48, 0, 86); // i2c address, pin, % to run
-  // Cottage irz2->setSoilMoistureSensor(0x48, 1, 86); // i2c address, pin, % to run
-  // Hill irz3->setSoilMoistureSensor(0x48, 3, 86); // i2c address, pin, % to run
-  // South Fence irz4->setSoilMoistureSensor(0x48, 2, 86); // i2c address, pin, % to run
-  // Back fence irz5->setSoilMoistureSensor(0x4b, 2, 86); // i2c address, pin, % to run
-  // North Fence irz6->setSoilMoistureSensor(0x4b, 1, 86); // i2c address, pin, % to run
-  // Garden irz7->setSoilMoistureSensor(0x4b, 3, 86); // i2c address, pin, % to run
-  // Zone8 irz8->setSoilMoistureSensor(0x4b, 0, 86); // i2c address, pin, % to run
 
   // Start the server
   server.on("/debug", handleDebug);
@@ -308,7 +300,7 @@ void loop() {
 
   for (IrrigationRelay * relay : IrrigationZones) {
     if ( relay->handle() ) {
-      syslog.logf(LOG_INFO, "%s %s; soil moisture: %f%%", relay->name, relay->state(), relay->soilMoisturePercentage);
+      syslog.logf(LOG_INFO, "%s %s; Moisture: %f%%", relay->name, relay->state(), relay->moisturePercentage);
     }
   }
 

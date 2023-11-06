@@ -20,13 +20,11 @@
 #include <my_motion.h>
 #include <my_dht.h>
 
+#include "config_default.h"
+
 #include <Adafruit_Sensor.h>
 
 // Syslog server connection info
-
-#define APP_NAME "base"
-#define JSON_SIZE 600
-#define MYTZ TZ_America_Los_Angeles
 
 ESP8266WebServer server(80);
 
@@ -34,17 +32,17 @@ ESP8266WebServer server(80);
 WiFiUDP udpClient;
 
 // Create a new syslog instance with LOG_LOCAL0 facility
-Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSLOG_APP_NAME, LOG_LOCAL0);
 
 Vector<myDHT*> DHTSensors;
 myDHT* storage_array[8];
 
-int debug = 0;
+int debug = DEBUG;
 char msg[40];
 LCD * lcd = new LCD();
 MOTION * motion = new MOTION(D7); 
 //IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, false, &mcp);
-TimerRelay * Mister = new TimerRelay(D3);
+IrrigationRelay * Mister = new IrrigationRelay(D3);
 
 void handleDebug() {
   if (server.arg("level") == "status") {
@@ -133,23 +131,34 @@ void handleSensors() {
 }
 
 void handlePrometheus() {
+
+  static size_t const BUFSIZE = 1024;
+  /*
+  char response_template[BUFSIZE] = 
+    "# HELP " PET_NAME "_info Metadata about the device.\n"
+    "# TYPE " PET_NAME "t_info gauge\n"
+    "# UNIT " PET_NAME "_info \n"
+    PET_NAME "_info{board=\"%s\",sensor=\"%s\"} 1\n";
+*/
+  char response[BUFSIZE] = "";
   for (myDHT* sensor : DHTSensors) {
-    String tempResponse = 
-      String("# HELP dht22_temperature Temperature measured by the DHT22 Sensor\n") +
-      String("# TYPE dht22_temperature gauge\n") +
-      String("dht22_temperature{scale=\"fahrenheit\"} ") + 
-      String(sensor->temp, DEC) + 
-      String("\n");
-      
-    String humidityResponse = 
-      String("# HELP dht22_humidity_percent Humidity percentage measured by the DHT22 Sensor\n") +
-      String("# TYPE dht22_humidity_percent gauge\n") +
-      String("dht22_humidity_percent ") + 
-      String(sensor->humid, DEC) +
-      String("\n");
-     
-    server.send(200, "text/plain; charset=utf-8", tempResponse + humidityResponse);
+      static char const *response_template =
+	  "# HELP " PET_NAME "_air_humidity_percent Air humidity.\n"
+	  "# TYPE " PET_NAME "_air_humidity_percent gauge\n"
+	  "# UNIT " PET_NAME "_air_humidity_percent %%\n"
+	  PET_NAME "_air_humidity_percent{petName=\"" PET_NAME "\",type=\"humidity\",sensorName=\"%s\"} %f\n"
+	  "# HELP " PET_NAME "_air_temperature_fahrenheit Air temperature.\n"
+	  "# TYPE " PET_NAME "_air_temperature_fahrenheit gauge\n"
+	  "# UNIT " PET_NAME "_air_temperature_fahrenheit \u00B0F\n"
+	  PET_NAME "_air_temperature_fahrenheit{petName=\"" PET_NAME "\",type=\"temperature\",sensorName=\"%s\"} %f\n"
+	  ;
+    
+      char response_part[BUFSIZE];
+      snprintf(response_part, BUFSIZE, response_template, sensor->sensorName, sensor->humid, sensor->sensorName, sensor->temp);
+      strcat(response, response_part);
   }
+
+    server.send(200, "text/plain; charset=utf-8", response);
 }
 
 void handleStatus() {
@@ -159,6 +168,7 @@ void handleStatus() {
 
   switches["mister"]["state"] = Mister->state();
   switches["mister"]["active"] = Mister->active;
+  switches["mister"]["RunTime (s)"] = Mister->runTime;
   switches["mister"]["Time Left"] = Mister->timeLeftToRun;
   switches["mister"]["Next Run Time"] = Mister->nextTimeToRun;
   switches["mister"]["Last Run Time"] = Mister->prettyOnTime;
@@ -196,11 +206,10 @@ void setup() {
 
   // Setup the Relay
   Mister->setup("misting_system");
-  Mister->setRuntime(45);
   Mister->setEveryDayOn();
   // automatic runs at 8:00AM and 8:00PM
   Mister->setStartTimeFromString("8:00");
-  Mister->setStartTimeFromString("20:00");
+  Mister->setStartTimeFromString("21:00");
 
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);
@@ -239,7 +248,10 @@ void setup() {
 
   DHTSensors.setStorage(storage_array);
   
+  // medusa has two sensors, geckster only has one
   if (strcmp(DEVICE_HOSTNAME, "iot-medusa") == 0) {
+    Mister->setRuntime(MEDUSA_MISTER_RUNTIME);
+    Mister->setMoistureLevel(MEDUSA_HUMIDITY_BOUNDRY);
     myDHT* dhtLeft = new myDHT(D5, DHT22);
     dhtLeft->begin();
     dhtLeft->setSensorName("leftDHT");
@@ -250,9 +262,11 @@ void setup() {
     dhtRight->setSensorName("rightDHT");
     DHTSensors.push_back(dhtRight);
   } else if (strcmp(DEVICE_HOSTNAME, "iot-geckster") == 0) {
+    Mister->setRuntime(GECKSTER_MISTER_RUNTIME);
+    Mister->setMoistureLevel(GECKSTER_HUMIDITY_BOUNDRY);
     myDHT* dht = new myDHT(D5, DHT22);
     dht->begin();
-    dht->setSensorName("rightDHT");
+    dht->setSensorName("DHT");
     DHTSensors.push_back(dht);
   }
 }
@@ -289,13 +303,13 @@ void loop() {
       sensor->handle(); 
       // don't mist if above 60% humidity
       humidity = sensor->getHumidity();
-      if (Mister->active && humidity > 60) {
+      if (Mister->active && humidity > Mister->moistureLevel) {
         Mister->setInActive();
-        syslog.log(LOG_INFO, "Setting mister INACTIVE");
+        syslog.logf(LOG_INFO, "Setting mister INACTIVE.  Humidity at %d, boundary at %d.", humidity, Mister->moistureLevel);
       } 
-      if (!Mister->active && humidity < 59) {
+      if (!Mister->active && humidity < (Mister->moistureLevel - 1)) {
 	Mister->setActive();
-        syslog.log(LOG_INFO, "Setting mister ACTIVE");
+        syslog.logf(LOG_INFO, "Setting mister ACTIVE.  Humidity at %d, boundary at %d.", humidity, Mister->moistureLevel);
      }
     }
   }
