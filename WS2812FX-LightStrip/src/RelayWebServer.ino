@@ -158,6 +158,10 @@ void setup() {
   Serial.println("Booting up");
 
   EEPROM.begin(EEPROM_SIZE);
+  //EEPROM.write(0, ledState);
+  //EEPROM.commit();
+  //ledState = EEPROM.read(0);
+
 
   // Connect to WiFi network
   WiFi.mode(WIFI_STA);

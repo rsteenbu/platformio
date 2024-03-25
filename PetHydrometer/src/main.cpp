@@ -209,7 +209,7 @@ void setup() {
   Mister->setEveryDayOn();
   // automatic runs at 8:00AM and 8:00PM
   Mister->setStartTimeFromString("8:00");
-  Mister->setStartTimeFromString("21:00");
+  Mister->setStartTimeFromString("16:00");
 
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);
@@ -276,7 +276,7 @@ time_t now = 0;
 bool misterRan = false;
 int misterStatus = 0;
 int prevMisterStatus = 0;
-int humidity = -1;
+int avgHumidity = -1;
 
 void loop() {
   ArduinoOTA.handle();
@@ -296,36 +296,41 @@ void loop() {
     syslog.log(LOG_INFO, "Nobody detected, turned backlight off");
   }
 
-
-  // Gather data from sensors, only supported up to every 2s
-  if ( now % 2 == 0 ) { 
+  // Gather data from sensors, only supported up to every 2s 
+  int humiditySum = 0, sensorCount = 0;
+  if ( now != prevTime && now % 2 == 0 ) {
     for (myDHT* sensor : DHTSensors) { 
       sensor->handle(); 
       // don't mist if above 60% humidity
-      humidity = sensor->getHumidity();
-      if (Mister->active && humidity > Mister->moistureLevel) {
-        Mister->setInActive();
-        syslog.logf(LOG_INFO, "Setting mister INACTIVE.  Humidity at %d, boundary at %d.", humidity, Mister->moistureLevel);
-      } 
-      if (!Mister->active && humidity < (Mister->moistureLevel - 1)) {
-	Mister->setActive();
-        syslog.logf(LOG_INFO, "Setting mister ACTIVE.  Humidity at %d, boundary at %d.", humidity, Mister->moistureLevel);
-     }
+      humiditySum = humiditySum + sensor->getHumidity();
+      sensorCount++;
     }
+    avgHumidity = humiditySum / sensorCount;
   }
-  
+
+  if (Mister->active && avgHumidity > Mister->moistureLevel) {
+    Mister->setInActive();
+    syslog.logf(LOG_INFO, "Setting mister INACTIVE.  Avg Humidity at %d, boundary at %d.", avgHumidity, Mister->moistureLevel);
+  } 
+  if (!Mister->active && avgHumidity < (Mister->moistureLevel - 1)) {
+    Mister->setActive();
+    syslog.logf(LOG_INFO, "Setting mister ACTIVE.  Humidity at %d, boundary at %d.", avgHumidity, Mister->moistureLevel);
+  }
+
   // Handle mister API requests and status changes
   misterStatus = Mister->handle();
+
   // mister changed state
   if (prevMisterStatus != misterStatus) {
     if (Mister->on) {
-	syslog.logf(LOG_INFO, "Scheduled mister run started, humidty at %d: ", humidity);
+	syslog.logf(LOG_INFO, "Scheduled mister run started, humidty at %d: ", avgHumidity);
     } else {
-	syslog.logf(LOG_INFO, "Scheduled mister run finished, humidty at %d: ", humidity);
+	syslog.logf(LOG_INFO, "Scheduled mister run finished, humidty at %d: ", avgHumidity);
     }
   }
 
-  // Update the LCD screen every 1 sec
+
+  // display snesor data or mister data on lcd 
   if ( now != prevTime ) {
     lcd->setCursor(0, 0);
 
@@ -343,6 +348,7 @@ void loop() {
       }
 
       // print the humdity on the 1st row
+      // we use the cached sensor data from before
       lcd->setCursor(0, 0);
       lcd->print("H:");
       for (myDHT* sensor : DHTSensors) {

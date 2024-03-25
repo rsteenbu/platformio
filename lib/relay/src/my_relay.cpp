@@ -581,7 +581,7 @@ bool IrrigationRelay::handle() {
 
   // if we're not on, turn it on if it's the right day and time
   if ( !on && isTimeToStart() ) {
-    if (!dry) return false; 
+    if (!dry || !active) return false; 
     switchOn();
     return true;
   }

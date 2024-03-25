@@ -1,5 +1,9 @@
 #pragma once
 
+// 11/6/23 two problems 
+// 1) alternating b/w active and inactive based on humidty readings.  maybe because of two sensors?
+// 2) it's not wet enough for medusa.
+
 #define DEBUG 0
 #define SYSLOG_APP_NAME "pet_sensor"
 #define JSON_SIZE 600
@@ -15,7 +19,7 @@
 #define DHT_PIN D6
 
 #define MEDUSA_MISTER_RUNTIME 30
-#define MEDUSA_HUMIDITY_BOUNDRY 75
+#define MEDUSA_HUMIDITY_BOUNDRY 20
 #define GECKSTER_MISTER_RUNTIME 40
-#define GECKSTER_HUMIDITY_BOUNDRY 60
+#define GECKSTER_HUMIDITY_BOUNDRY 20
 
