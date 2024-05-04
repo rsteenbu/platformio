@@ -41,7 +41,6 @@ int debug = DEBUG;
 char msg[40];
 LCD * lcd = new LCD();
 MOTION * motion = new MOTION(D7); 
-//IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, false, &mcp);
 IrrigationRelay * Mister = new IrrigationRelay(D3);
 
 void handleDebug() {
