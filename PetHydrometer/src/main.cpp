@@ -19,12 +19,9 @@
 #include <my_relay.h>
 #include <my_motion.h>
 #include <my_dht.h>
-
-#include "config_default.h"
-
 #include <Adafruit_Sensor.h>
 
-// Syslog server connection info
+#include "config_default.h"
 
 ESP8266WebServer server(80);
 
