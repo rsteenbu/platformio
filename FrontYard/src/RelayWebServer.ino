@@ -99,7 +99,9 @@ void setup() {
   // Frontyard Irrigation
   irrigation->setup("frontyard");
   irrigation->setRuntime(10*60);
-  irrigation->setStartTime(8, 15);
+  /* DISABLE WHILE ON BREAK */
+  //irrigation->setStartTime(8, 15);
+
   // Disable until I figure out what's going on with the sensor
   //irrigation->setMoistureSensor(MOISTURE_PIN, 70); // pin for analog read, percentage to run at
   //irrigation->setMoistureLimits(660, 330); //dry level, wet level

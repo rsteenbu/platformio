@@ -13,5 +13,3 @@
 #define TX_PIN 1
 #define GPIO2_PIN 2
 #define RX_PIN 3
-
-#define RELAY_PIN 3
