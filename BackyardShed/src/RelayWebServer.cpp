@@ -22,17 +22,27 @@
 #include <TZ.h>
 
 // This device info
-#define APP_NAME "switch"
 #define JSON_SIZE 1500
 #define MYTZ TZ_America_Los_Angeles
 
 ESP8266WebServer server(80);
-
-// A UDP instance to let us send and receive packets over UDP
-WiFiUDP udpClient;
+/* TODO
+ - Add enable/disable schedule function and make it persist reboots
+ - Finish cleaning up logging
+ - update loki logging to have a single panel for all iot stuff
+ - add mister logs to pets dashboard
+*/
 
 // Create a new syslog instance with LOG_LOCAL0 facility
-Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, APP_NAME, LOG_LOCAL0);
+// TODO:This should be pulled out into a common header
+#define SYSTEM_APPNAME "arduino"
+#define LIGHT_APPNAME "lightsensor"
+#define THERMO_APPNAME "thermometer"
+#define MOTION_APPNAME "motionsensor"
+#define LIGHTSWITCH_APPNAME "lightswitch"
+#define IRRIGATION_APPNAME "irrigation"
+WiFiUDP udpClient;
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSTEM_APPNAME, LOG_LOCAL0);
 
 Veml veml;
 
@@ -50,6 +60,24 @@ Vector<IrrigationRelay*> IrrigationZones;
 IrrigationRelay * storage_array[8];
 
 ReedSwitch * shedDoor = new ReedSwitch(REED_PIN, &mcp);
+
+void handleHelp() {
+  String helpMessage = "/help";
+
+  helpMessage += "/debug?level=status\n";
+  helpMessage += "/debug?level=[012]\n";
+  helpMessage += "\n";
+  helpMessage += "/status?zone=[<zone>]\n";
+  helpMessage += "/irrigation?zone=[<zone>]&state=[on|off|status]\n";
+  helpMessage += "\n";
+  helpMessage += "zones:";
+  for (IrrigationRelay * relay : IrrigationZones) {
+    helpMessage = helpMessage + " " + relay->name;
+  }
+  helpMessage += "\n";
+
+  server.send(200, "text/plain", helpMessage);
+}
 
 void handleDebug() {
   if (server.arg("level") == "status") {
@@ -119,6 +147,7 @@ void handleStatus() {
   for (IrrigationRelay * relay : IrrigationZones) {
     if (server.arg("zone") == relay->name) {
       matchFound = true;
+      switches[relay->name]["Active"] = relay->active;
       switches[relay->name]["State"] = relay->state();
       switches[relay->name]["Override"] = relay->scheduleOverride;
       switches[relay->name]["Moisture Level"] = relay->moistureLevel;
@@ -160,6 +189,24 @@ void handleStatus() {
   }
 }
 
+void logIrrigationEvent(IrrigationRelay * relay, const char* trigger) {
+  StaticJsonDocument<JSON_SIZE> doc;
+  doc["unit"] ="backyard";
+  doc["trigger"] = trigger;
+  doc["zone"] = relay->name;
+  doc["state"] = relay->state();
+  doc["run_time"] = relay->runTime;
+  doc["moisture_level"] = relay->moisturePercentage;
+
+  String logMessage;
+  serializeJson(doc, logMessage);
+
+  syslog.appName(IRRIGATION_APPNAME);
+  syslog.log(LOG_INFO, logMessage);
+  syslog.appName(SYSTEM_APPNAME);
+
+}
+
 void handleIrrigation() {
   bool matchFound = false;
   char suppliedZone[15];
@@ -174,12 +221,16 @@ void handleIrrigation() {
       matchFound = true;
       if (server.arg("override") == "true") {
 	      relay->setScheduleOverride(true);
+              syslog.appName(IRRIGATION_APPNAME);
 	      syslog.logf(LOG_INFO, "Schedule disabled for irrigation zone %s on by API request", relay->name);
+	      syslog.appName(SYSTEM_APPNAME);
 	      server.send(200, "text/plain");
 	      return;
       } else if (server.arg("override") == "false") {
 	      relay->setScheduleOverride(false);
+              syslog.appName(IRRIGATION_APPNAME);
 	      syslog.logf(LOG_INFO, "Schedule enabled for irrigation zone %s on by API request", relay->name);
+	      syslog.appName(SYSTEM_APPNAME);
 	      server.send(200, "text/plain");
 	      return;
       } else if (server.arg("state") == "status") {
@@ -187,12 +238,13 @@ void handleIrrigation() {
 	return;
       } else if (server.arg("state") == "on") {
 	      relay->switchOn();
-	      syslog.logf(LOG_INFO, "Turned irrigation zone %s on by API request for %ds", relay->name, relay->runTime);
+	      //TODO: log events should only be when state changes
+	      logIrrigationEvent(relay, "API");
 	      server.send(200, "text/plain");
 	      return;
       } else if (server.arg("state") == "off") {
 	      relay->switchOff();
-	      syslog.logf(LOG_INFO, "Turned irrigation zone %s off by API request", relay->name);
+	      logIrrigationEvent(relay, "API");
 	      server.send(200, "text/plain");
 	      return;
       } else {
@@ -260,10 +312,7 @@ void setup() {
   IrrigationRelay * irz4 = new IrrigationRelay("hill",        4, true, "7:45", 20, false,  &mcp);
   IrrigationRelay * irz5 = new IrrigationRelay("back_fence",  2, true, "8:15", 15, false,  &mcp);
   IrrigationRelay * irz6 = new IrrigationRelay("north_fence", 1, true, "8:30", 15, true,  &mcp);
-// IrrigationRelay * irz7 = new IrrigationRelay("garden",      3, true, "6:00", 8, &mcp);
-// irz7->setStartTimeFromString(                                       "10:00");
-// irz7->setStartTimeFromString(                                       "14:00");
-// irz7->setStartTimeFromString(                                       "18:00");
+ 
   irz1->setup(); IrrigationZones.push_back(irz1);
   irz2->setup(); IrrigationZones.push_back(irz2);
   irz3->setup(); IrrigationZones.push_back(irz3);
@@ -271,8 +320,8 @@ void setup() {
   irz5->setup(); IrrigationZones.push_back(irz5);
   irz6->setup(); IrrigationZones.push_back(irz6);
 
-
   // Start the server
+  server.on("/help", handleHelp);
   server.on("/debug", handleDebug);
   server.on("/irrigation", handleIrrigation);
   server.on("/zones", handleZones);
@@ -282,7 +331,13 @@ void setup() {
 
   server.begin();
   Serial.println("End of setup");
+
+  for (IrrigationRelay * relay : IrrigationZones) {
+    relay->setInActive();
+  }
+
 }
+
 
 time_t prevTime = 0;;
 void loop() {
@@ -297,13 +352,9 @@ void loop() {
   }
   prevTime = now;
 
-
   for (IrrigationRelay * relay : IrrigationZones) {
     if ( relay->handle() ) {
-      syslog.logf(LOG_INFO, "%s %s; Moisture: %f%%", relay->name, relay->state(), relay->moisturePercentage);
+      logIrrigationEvent(relay, "schedule");
     }
   }
-
 }
-
-
