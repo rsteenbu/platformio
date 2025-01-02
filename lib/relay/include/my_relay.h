@@ -17,6 +17,8 @@
 #include <Adafruit_ADS1X15.h>
 #include <my_veml.h>
 
+#include <Preferences.h>
+#include <Vector.h>
 
 class Relay {
   int onVal = HIGH;
@@ -97,10 +99,11 @@ class TimerRelay: public Relay {
 
     void setTimeLeftToRun();
     void setNextTimeToRun();
+    Preferences preferences;
 
   public:
     int runTime = 0;
-    bool active = true;
+    bool active =  preferences.getBool("active", true);
     char timeLeftToRun[6];
     char nextTimeToRun[18];
     Array<int,7> runDays;
@@ -133,6 +136,8 @@ class TimerRelay: public Relay {
     bool isTimeToStop();
     bool handle();
 };
+
+//https://forum.arduino.cc/t/oop-using-vectors-in-classes/513920/4
 
 // TODO: method to display time left to run
 // TODO: status of next scheduled run time in days, hours, minutes

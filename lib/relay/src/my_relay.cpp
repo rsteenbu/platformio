@@ -20,7 +20,7 @@ void Relay::internalOff() {
   }
 }
 
-    //constructors
+//constructors
 Relay::Relay (int a): pin(a) {}
 Relay::Relay (int a, Adafruit_MCP23X17* b) {
   pin = a;
@@ -214,6 +214,16 @@ bool GarageDoorRelay::handle() {
   return false;
 }
 
+// TimerRelay constructurs
+TimerRelay::TimerRelay(int a): Relay(a) {
+  setEveryDayOn();
+  preferences.begin("TimerRelay", false);
+}
+TimerRelay::TimerRelay (int a, Adafruit_MCP23X17* b): Relay(a, b) {
+  setEveryDayOn();
+  preferences.begin("TimerRelay", false);
+}
+
 void TimerRelay::setTimeLeftToRun() {
   if ( on ) { 
     secondsLeft = runTime - (now - onTime);
@@ -268,20 +278,14 @@ void TimerRelay::setNextTimeToRun() {
   }
 }
 
-// TimerRelay constructurs
-TimerRelay::TimerRelay(int a): Relay(a) {
-  setEveryDayOn();
-}
-TimerRelay::TimerRelay (int a, Adafruit_MCP23X17* b): Relay(a, b) {
-  setEveryDayOn();
-}
-
 void TimerRelay::setActive() {
   active = true;
+  preferences.putBool("active", active);
 }
 
 void TimerRelay::setInActive() {
   active = false;
+  preferences.putBool("active", active);
 }
 
 void TimerRelay::setRuntime(int a) {
@@ -470,6 +474,30 @@ bool TimerRelay::handle() {
 
   return false;
 }
+
+/*
+
+//Manage a vector of Irrigation Relays
+IrrigationZones::IrrigationZones (int a) { }
+IrrigationZones::IrrigationZones (const int ELEMENT_COUNT_MAX, Adafruit_MCP23X17* b) {
+  zoneCount = a;
+
+  this::IrrigationRelay * storage_array[ELEMENT_COUNT_MAX];
+  Elements.setStorage(storage_array);
+}
+
+void IrrigationZones::addZone(const char* name, const char* startTime, int runTime) {
+
+  IrrigationRelay * irz;
+
+  if (isMCP) {
+    irz = new IrrigationRelay(name, zoneAddress++, true, startTime, runTime, false, mcp);
+  }
+
+  irz->setup();
+  IrrigationZones.push_back(irz);
+}
+*/
 
 // IrrigationRelay constructors
 IrrigationRelay::IrrigationRelay (int a): TimerRelay(a) { }

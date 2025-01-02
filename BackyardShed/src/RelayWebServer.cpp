@@ -338,7 +338,6 @@ void setup() {
 
 }
 
-
 time_t prevTime = 0;;
 void loop() {
   ArduinoOTA.handle();
