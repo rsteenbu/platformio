@@ -69,7 +69,9 @@ void setup() {
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   while (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Connecting to network...");
+    Serial.print("Connecting to ");
+    Serial.print(WIFI_SSID);
+    Serial.println("...");
     delay(500);
   }
 
