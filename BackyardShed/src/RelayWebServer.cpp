@@ -1,8 +1,7 @@
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-
+#include <WiFiClient.h>
 #include <WiFiUdp.h>
 #include <Syslog.h>
 #include <ArduinoOTA.h>
@@ -12,8 +11,9 @@
 #include <Wire.h>
 #include "Adafruit_MCP23X17.h"
 
+//#include <my_myreed.h>
 #include <my_relay.h>
-#include <my_reed.h>
+//#include <irrigation_relay_container.h>
 #include <my_veml.h>
 
 #include <time.h>                       // time() ctime()
@@ -32,6 +32,9 @@ ESP8266WebServer server(80);
  - update loki logging to have a single panel for all iot stuff
  - add mister logs to pets dashboard
 */
+// REMOVE
+//Vector<IrrigationInstance*> IrrigationInstance::Instances;
+//IrrigationInstance Irrigation[] = {1,2,3,4,5,6};
 
 // Create a new syslog instance with LOG_LOCAL0 facility
 // TODO:This should be pulled out into a common header
@@ -59,7 +62,7 @@ Adafruit_MCP23X17 mcp;
 Vector<IrrigationRelay*> IrrigationZones;
 IrrigationRelay * storage_array[8];
 
-ReedSwitch * shedDoor = new ReedSwitch(REED_PIN, &mcp);
+//ReedSwitch * shedDoor = new ReedSwitch(REED_PIN, &mcp);
 
 void handleHelp() {
   String helpMessage = "/help";
@@ -116,6 +119,7 @@ void handleZones() {
   server.send(200, "text/plain", zones);
 }
 
+/*
 void handleDoor() {
   if (server.arg("state") == "status") {
     server.send(200, "text/plain", shedDoor->status() ? "1" : "0");
@@ -123,15 +127,20 @@ void handleDoor() {
   } 
   server.send(404, "text/plain", "ERROR: uknonwn state command");
 }
+*/
 
 void handleSensors() {
   if (server.arg("sensor") == "light") {
     char msg[10];
     sprintf(msg, "%d", veml.readLux());
     server.send(200, "text/plain", msg);
-  } else if (server.arg("sensor") == "door") {
+  } 
+
+/*
+  else if (server.arg("sensor") == "door") {
     server.send(200, "text/plain", shedDoor->status() ? "1" : "0");
   }
+  */
 }
 
 void handleStatus() {
@@ -168,7 +177,7 @@ void handleStatus() {
     return;
   }
 
-  sensors["Door Status"] = shedDoor->state();
+//  sensors["Door Status"] = shedDoor->state();
   sensors["Light Level"] = veml.readLux();
   doc["debug"] = debug;
 
@@ -297,9 +306,16 @@ void setup() {
   if ( ! veml.setup() ) {
     syslog.log(LOG_INFO, "ERROR: veml setup failed");
   }
-  
+
   // setup the reed switch on the shed door
-  shedDoor->setup("shed_door");
+//  shedDoor->setup("shed_door");
+
+
+  //REMOVE
+//  for (auto i : IrrigationInstance::Instances) {
+//    syslog.logf("irrigation instance %d", i->val);
+//  }
+
 
   IrrigationZones.setStorage(storage_array);
 
@@ -325,16 +341,19 @@ void setup() {
   server.on("/debug", handleDebug);
   server.on("/irrigation", handleIrrigation);
   server.on("/zones", handleZones);
-  server.on("/door", handleDoor);
+  //server.on("/door", handleDoor);
   server.on("/sensors", handleSensors);
   server.on("/status", handleStatus);
 
   server.begin();
   Serial.println("End of setup");
 
+/*
+  // Disable the zones
   for (IrrigationRelay * relay : IrrigationZones) {
     relay->setInActive();
   }
+*/
 
 }
 
@@ -344,11 +363,13 @@ void loop() {
   server.handleClient();
 
   time_t now = time(nullptr);
+  /*
   if (prevTime != now) {
     if ( shedDoor->handle() ) {
       syslog.logf(LOG_INFO, "%s %s", shedDoor->name, shedDoor->state());
     }
   }
+  */
   prevTime = now;
 
   for (IrrigationRelay * relay : IrrigationZones) {

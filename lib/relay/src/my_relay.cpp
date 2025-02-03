@@ -217,11 +217,11 @@ bool GarageDoorRelay::handle() {
 // TimerRelay constructurs
 TimerRelay::TimerRelay(int a): Relay(a) {
   setEveryDayOn();
-  preferences.begin("TimerRelay", false);
+  //preferences.begin("TimerRelay", false);
 }
 TimerRelay::TimerRelay (int a, Adafruit_MCP23X17* b): Relay(a, b) {
   setEveryDayOn();
-  preferences.begin("TimerRelay", false);
+  //preferences.begin("TimerRelay", false);
 }
 
 void TimerRelay::setTimeLeftToRun() {
@@ -280,12 +280,12 @@ void TimerRelay::setNextTimeToRun() {
 
 void TimerRelay::setActive() {
   active = true;
-  preferences.putBool("active", active);
+  //preferences.putBool("active", active);
 }
 
 void TimerRelay::setInActive() {
   active = false;
-  preferences.putBool("active", active);
+  //preferences.putBool("active", active);
 }
 
 void TimerRelay::setRuntime(int a) {

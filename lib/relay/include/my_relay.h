@@ -13,12 +13,10 @@
 #include <Array.h>
 #include <Wire.h>
 #include "Adafruit_MCP23X17.h"
-#include <SPI.h>
 #include <Adafruit_ADS1X15.h>
 #include <my_veml.h>
 
-#include <Preferences.h>
-#include <Vector.h>
+//#include <Preferences.h>
 
 class Relay {
   int onVal = HIGH;
@@ -99,11 +97,12 @@ class TimerRelay: public Relay {
 
     void setTimeLeftToRun();
     void setNextTimeToRun();
-    Preferences preferences;
+    //Preferences preferences;
 
   public:
     int runTime = 0;
-    bool active =  preferences.getBool("active", true);
+    bool active = true;
+    //bool active =  preferences.getBool("active", true);
     char timeLeftToRun[6];
     char nextTimeToRun[18];
     Array<int,7> runDays;

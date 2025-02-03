@@ -25,11 +25,16 @@
 
 ESP8266WebServer server(80);
 
-// A UDP instance to let us send and receive packets over UDP
-WiFiUDP udpClient;
-
 // Create a new syslog instance with LOG_LOCAL0 facility
-Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSLOG_APP_NAME, LOG_LOCAL0);
+#define SYSTEM_APPNAME "arduino"
+#define LIGHT_APPNAME "lightsensor"
+#define THERMO_APPNAME "thermometer"
+#define MOTION_APPNAME "motionsensor"
+#define LIGHTSWITCH_APPNAME "lightswitch"
+#define MISTER_APPNAME "mister"
+#define IRRIGATION_APPNAME "irrigation"
+WiFiUDP udpClient;
+Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSTEM_APPNAME, LOG_LOCAL0);
 
 Vector<myDHT*> DHTSensors;
 myDHT* storage_array[8];
@@ -65,18 +70,24 @@ void handleDebug() {
 void handleMister() {
   if (server.arg("state") == "on") {
     Mister->switchOn();
+    syslog.appName(MISTER_APPNAME);
     syslog.logf(LOG_INFO, "Turned %s on for %ds", Mister->name, Mister->runTime);
+    syslog.appName(SYSTEM_APPNAME);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "off") {
     Mister->switchOff();
+    syslog.appName(MISTER_APPNAME);
     syslog.logf(LOG_INFO, "Turned %s off", Mister->name);
+    syslog.appName(SYSTEM_APPNAME);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
     server.send(200, "text/plain", Mister->on ? "1" : "0");
   } else if (server.arg("addTime") != "") {
     int timeToAdd = server.arg("addTime").toInt();
     Mister->addTimeToRun(timeToAdd);
+    syslog.appName(MISTER_APPNAME);
     syslog.logf(LOG_INFO, "Added %d seconds, total runtime now %ds, time left %ds", timeToAdd, Mister->runTime, Mister->getSecondsLeft());
+    syslog.appName(SYSTEM_APPNAME);
     server.send(200, "text/plain");
   } else {
     server.send(404, "text/plain", "ERROR: unknown mister command");
@@ -306,11 +317,15 @@ void loop() {
 
   if (Mister->active && avgHumidity > Mister->moistureLevel) {
     Mister->setInActive();
+    syslog.appName(MISTER_APPNAME);
     syslog.logf(LOG_INFO, "Setting mister INACTIVE.  Avg Humidity at %d, boundary at %d.", avgHumidity, Mister->moistureLevel);
+    syslog.appName(SYSTEM_APPNAME);
   } 
   if (!Mister->active && avgHumidity < (Mister->moistureLevel - 1)) {
     Mister->setActive();
+    syslog.appName(MISTER_APPNAME);
     syslog.logf(LOG_INFO, "Setting mister ACTIVE.  Humidity at %d, boundary at %d.", avgHumidity, Mister->moistureLevel);
+    syslog.appName(SYSTEM_APPNAME);
   }
 
   // Handle mister API requests and status changes
@@ -318,11 +333,13 @@ void loop() {
 
   // mister changed state
   if (prevMisterStatus != misterStatus) {
+    syslog.appName(MISTER_APPNAME);
     if (Mister->on) {
-	syslog.logf(LOG_INFO, "Scheduled mister run started, humidty at %d: ", avgHumidity);
+      syslog.logf(LOG_INFO, "Scheduled mister run started, humidty at %d: ", avgHumidity);
     } else {
-	syslog.logf(LOG_INFO, "Scheduled mister run finished, humidty at %d: ", avgHumidity);
+      syslog.logf(LOG_INFO, "Scheduled mister run finished, humidty at %d: ", avgHumidity);
     }
+      syslog.appName(SYSTEM_APPNAME);
   }
 
 
