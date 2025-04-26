@@ -181,32 +181,48 @@ const char* GarageDoorRelay::state() {
 }
 
 bool GarageDoorRelay::handle() {
-  int doorOpen = i2cPins ? (*mcp).digitalRead(REED_OPEN_PIN) : digitalRead(REED_OPEN_PIN); // Check to see of the door is open
+  int doorOpen = i2cPins ? 
+                  (*mcp).digitalRead(REED_OPEN_PIN) : 
+		  digitalRead(REED_OPEN_PIN); // Check to see of the door is open
   if (doorOpen == LOW) { // Door detected is in the open position
     if (doorState != DOOR_OPEN) {
-      if (useLeds) i2cPins ? (*mcp).digitalWrite(LED_OPEN_PIN, HIGH) : digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
+      if (useLeds) 
+	i2cPins ? 
+	  (*mcp).digitalWrite(LED_OPEN_PIN, HIGH) : 
+	  digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
       doorState = DOOR_OPEN;
       return true;
     }
   } else { // Door is not in the open position
     if (doorState == DOOR_OPEN ) {
-      if (useLeds) i2cPins ? (*mcp).digitalWrite(LED_OPEN_PIN, LOW) : digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
+      if (useLeds) 
+	i2cPins ? 
+	  (*mcp).digitalWrite(LED_OPEN_PIN, LOW) : 
+	  digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
       doorState = DOOR_CLOSING;
       return true;
     }
   }
 
-  int doorClosed = i2cPins ? (*mcp).digitalRead(REED_CLOSED_PIN) : digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
+  int doorClosed = i2cPins ? 
+                     (*mcp).digitalRead(REED_CLOSED_PIN) : 
+                     digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
   if (doorClosed == LOW) // Door detected in the closed position
   {
     if (doorState != DOOR_CLOSED) {
-      if (LED_CLOSED_PIN) i2cPins ? (*mcp).digitalWrite(LED_CLOSED_PIN, HIGH) : digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
+      if (LED_CLOSED_PIN) 
+	i2cPins ? 
+	  (*mcp).digitalWrite(LED_CLOSED_PIN, HIGH) : 
+	  digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
       doorState = DOOR_CLOSED;
       return true;
     }
   } else { // Door is not in the closed position
     if (doorState == DOOR_CLOSED) {
-      if (LED_CLOSED_PIN) i2cPins ? (*mcp).digitalWrite(LED_CLOSED_PIN, LOW) : digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
+      if (LED_CLOSED_PIN) 
+	i2cPins ? 
+	  (*mcp).digitalWrite(LED_CLOSED_PIN, LOW) : 
+	  digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
       doorState = DOOR_OPENING;
       return true;
     }
