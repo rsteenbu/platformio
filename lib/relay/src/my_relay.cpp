@@ -181,9 +181,10 @@ const char* GarageDoorRelay::state() {
 }
 
 bool GarageDoorRelay::handle() {
+  // Check to see of the door is open
   int doorOpen = i2cPins ? 
                   (*mcp).digitalRead(REED_OPEN_PIN) : 
-		  digitalRead(REED_OPEN_PIN); // Check to see of the door is open
+		  digitalRead(REED_OPEN_PIN); 
   if (doorOpen == LOW) { // Door detected is in the open position
     if (doorState != DOOR_OPEN) {
       if (useLeds) 
