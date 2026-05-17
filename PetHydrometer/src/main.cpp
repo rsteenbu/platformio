@@ -216,7 +216,9 @@ void setup() {
   Mister->setEveryDayOn();
   // automatic runs at 8:00AM and 8:00PM
   Mister->setStartTimeFromString("8:00");
+  Mister->setStartTimeFromString("12:00");
   Mister->setStartTimeFromString("16:00");
+  Mister->setStartTimeFromString("20:00");
 
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);
