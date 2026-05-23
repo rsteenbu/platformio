@@ -15,6 +15,7 @@
 #include <my_relay.h>
 //#include <irrigation_relay_container.h>
 #include <my_veml.h>
+#include "irrigation_config.h"
 
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -60,7 +61,7 @@ int debug = 0;
 StaticJsonDocument<200> doc;
 Adafruit_MCP23X17 mcp;
 Vector<IrrigationRelay*> IrrigationZones;
-IrrigationRelay * storage_array[8];
+IrrigationRelay * storage_array[NUM_IRRIGATION_ZONES];
 
 //ReedSwitch * shedDoor = new ReedSwitch(REED_PIN, &mcp);
 
@@ -321,26 +322,8 @@ void setup() {
 
   IrrigationZones.setStorage(storage_array);
 
-  //TODO: add starttimes to status
-  //maybe the mcp reference can be passed just once?
-  //address, backwards?, Start, Mins, Schedule, EveryOtherDay?
-  IrrigationRelay * irz1 = new IrrigationRelay("patio_pots",  7, true, "7:00",  3, false, &mcp);
-  IrrigationRelay * irz2 = new IrrigationRelay("cottage",     6, true, "7:15", 15, true,  &mcp);
-  IrrigationRelay * irz3 = new IrrigationRelay("south_fence", 5, true, "7:30",  5, false, &mcp);
-  IrrigationRelay * irz4 = new IrrigationRelay("hill",        4, true, "7:45", 20, false, &mcp);
-  IrrigationRelay * irz5 = new IrrigationRelay("unused_0",    3, true, "8:15", 5, false,  &mcp);
-  IrrigationRelay * irz6 = new IrrigationRelay("back_fence",  2, true, "8:15", 15, false, &mcp);
-  IrrigationRelay * irz7 = new IrrigationRelay("north_fence", 1, true, "8:30", 15, true,  &mcp);
-  IrrigationRelay * irz8 = new IrrigationRelay("unused_1",    0, true, "8:30", 5,  true,  &mcp);
- 
-  irz1->setup(); IrrigationZones.push_back(irz1);
-  irz2->setup(); IrrigationZones.push_back(irz2);
-  irz3->setup(); IrrigationZones.push_back(irz3);
-  irz4->setup(); IrrigationZones.push_back(irz4);
-  irz5->setup(); IrrigationZones.push_back(irz5);
-  irz6->setup(); IrrigationZones.push_back(irz6);
-  irz7->setup(); IrrigationZones.push_back(irz7);
-  irz8->setup(); IrrigationZones.push_back(irz8);
+  // Initialize irrigation zones from configuration
+  setupIrrigationZones(IrrigationZones, &mcp);
 
   // Start the server
   server.on("/help", handleHelp);
