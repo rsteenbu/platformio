@@ -49,9 +49,9 @@ int const MOISTURE_PIN = A0;
 int const ONEWIRE_PIN = D7;
 
 // Thermometer Dallas OneWire
-OneWire ds(ONEWIRE_PIN);  // on pin D7 (a 4.7K resistor is necessary)
-DallasTemperature sensors(&ds);
-DeviceAddress frontyardThermometer;
+//OneWire ds(ONEWIRE_PIN);  // on pin D7 (a 4.7K resistor is necessary)
+//DallasTemperature sensors(&ds);
+//DeviceAddress frontyardThermometer;
 
 DuskToDawnScheduleRelay * lvLights = new DuskToDawnScheduleRelay(D4);
 IrrigationRelay * irrigation = new IrrigationRelay(D5);
@@ -99,8 +99,8 @@ void setup() {
   // Frontyard Irrigation
   irrigation->setup("frontyard");
   irrigation->setRuntime(10*60);
-  /* DISABLE WHILE ON BREAK */
-  //irrigation->setStartTime(8, 15);
+  /* DISABLE if ON BREAK */
+  irrigation->setStartTime(8, 15);
 
   // Disable until I figure out what's going on with the sensor
   //irrigation->setMoistureSensor(MOISTURE_PIN, 70); // pin for analog read, percentage to run at
@@ -131,6 +131,7 @@ void setup() {
 
   syslog.appName(LIGHT_APPNAME);
 
+/*
   // Start up the DallasTemperature library
   syslog.appName(THERMO_APPNAME);
   sensors.begin();
@@ -140,6 +141,7 @@ void setup() {
     sensors.setResolution(frontyardThermometer, 9);
   }
   syslog.appName(SYSTEM_APPNAME);
+  */
 }
 
 void handleDebug() {
@@ -311,7 +313,7 @@ void loop() {
   prevTime = now;
   now = time(nullptr);
   if ( ( now != prevTime ) && ( now % 5 == 0 ) ) {
-     temperature = getTemperature();
+     //temperature = getTemperature();
      motionsensor->handle();
      updateDisplay();
   }
@@ -346,15 +348,17 @@ void updateDisplay() {
       display.println();
       display.printf("Moisture: %0.2f", irrigation->moisturePercentage);
       display.println();
-      display.printf("Temperature: %2.2f", temperature);
-      display.println();
+      //display.printf("Temperature: %2.2f", temperature);
+      //display.println();
       display.display();
    }
 }
 
+/*
 float getTemperature() {
   sensors.requestTemperatures(); // Send the command to get temperatures
   float tempC = sensors.getTempC(frontyardThermometer);
   return DallasTemperature::toFahrenheit(tempC); // Converts tempC to Fahrenheit
 }
+*/
 
