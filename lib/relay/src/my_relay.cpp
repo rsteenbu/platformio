@@ -1,8 +1,33 @@
 #include "my_relay.h"
 
+// GPIO wrapper methods
+void Relay::pinModeWrapper(uint8_t pin, uint8_t mode) {
+  if (i2cPins) {
+    (*mcp).pinMode(pin, mode);
+  } else {
+    pinMode(pin, mode);
+  }
+}
+
+void Relay::digitalWriteWrapper(uint8_t pin, uint8_t val) {
+  if (i2cPins) {
+    (*mcp).digitalWrite(pin, val);
+  } else {
+    digitalWrite(pin, val);
+  }
+}
+
+int Relay::digitalReadWrapper(uint8_t pin) {
+  if (i2cPins) {
+    return (*mcp).digitalRead(pin);
+  } else {
+    return digitalRead(pin);
+  }
+}
+
 void Relay::internalOn() {
   if (!on) {
-    i2cPins ? (*mcp).digitalWrite(pin, onVal) : digitalWrite(pin, onVal);
+    digitalWriteWrapper(pin, onVal);
     on = true;
     onTime = time(nullptr);
     struct tm *timeinfo = localtime(&onTime);
@@ -12,7 +37,7 @@ void Relay::internalOn() {
 
 void Relay::internalOff() {
   if (on) {
-    i2cPins ? (*mcp).digitalWrite(pin, offVal) : digitalWrite(pin, offVal);
+    digitalWriteWrapper(pin, offVal);
     on = false;
     offTime = time(nullptr);
     struct tm *timeinfo = localtime(&offTime);
@@ -21,11 +46,26 @@ void Relay::internalOff() {
 }
 
 //constructors
-Relay::Relay (int a): pin(a) {}
-Relay::Relay (int a, Adafruit_MCP23X17* b) {
-  pin = a;
-  mcp = b;
-  i2cPins = true;
+Relay::Relay (int a, bool backwards): pin(a), name(nullptr) {
+  if (backwards) {
+    onVal = LOW;
+    offVal = HIGH;
+  }
+}
+
+Relay::Relay (int a, Adafruit_MCP23X17* b, bool backwards): mcp(b), i2cPins(true), pin(a), name(nullptr) {
+  if (backwards) {
+    onVal = LOW;
+    offVal = HIGH;
+  }
+}
+
+//destructor
+Relay::~Relay() {
+  if (name != nullptr) {
+    delete[] name;
+    name = nullptr;
+  }
 }
 
 void Relay::setBackwards() {
@@ -56,15 +96,10 @@ void Relay::setup(const char* a) {
 }
 
 void Relay::setup() {
-  if (i2cPins) {
-    (*mcp).pinMode(pin, OUTPUT);
-    (*mcp).digitalWrite(pin, offVal); // start off
-  } else {
-    pinMode(pin, OUTPUT);
-    digitalWrite(pin, offVal); // start off
-  }
+  pinModeWrapper(pin, OUTPUT);
+  digitalWriteWrapper(pin, offVal); // start off
 
-  // iternate through one on off cycle to work the kinks out
+  // iterate through one on off cycle to work the kinks out
   internalOn(); internalOff();
 
 #ifdef ESP32
@@ -121,9 +156,6 @@ GarageDoorRelay::GarageDoorRelay(int a, int b, int c, int d, int e, Adafruit_MCP
   REED_CLOSED_PIN = c;
   LED_OPEN_PIN = d;
   LED_CLOSED_PIN = e;
-  mcp = f;
-
-  i2cPins = true;
   useLeds = true;
 }
 
@@ -137,21 +169,15 @@ void GarageDoorRelay::setup(const char* a) {
 
   // Since the other end of the reed switch is connected to ground, we need
   // to pull-up the reed switch pin internally.
-  i2cPins ? (*mcp).pinMode(REED_OPEN_PIN, INPUT_PULLUP) : 
-    pinMode(REED_OPEN_PIN, INPUT_PULLUP);
-  i2cPins ? (*mcp).pinMode(REED_CLOSED_PIN, INPUT_PULLUP) : 
-    pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
+  pinModeWrapper(REED_OPEN_PIN, INPUT_PULLUP);
+  pinModeWrapper(REED_CLOSED_PIN, INPUT_PULLUP);
 
   if (useLeds) {
-    i2cPins ? (*mcp).pinMode(LED_OPEN_PIN, OUTPUT) : 
-      pinMode(LED_OPEN_PIN, OUTPUT);
-    i2cPins ? (*mcp).pinMode(LED_CLOSED_PIN, OUTPUT) : 
-      pinMode(LED_CLOSED_PIN, OUTPUT);
+    pinModeWrapper(LED_OPEN_PIN, OUTPUT);
+    pinModeWrapper(LED_CLOSED_PIN, OUTPUT);
     // Set the LED's to off initially
-    i2cPins ? (*mcp).digitalWrite(LED_OPEN_PIN, LOW) : 
-      digitalWrite(LED_OPEN_PIN, LOW); 
-    i2cPins ? (*mcp).digitalWrite(LED_CLOSED_PIN, LOW) : 
-      digitalWrite(LED_CLOSED_PIN, LOW);
+    digitalWriteWrapper(LED_OPEN_PIN, LOW);
+    digitalWriteWrapper(LED_CLOSED_PIN, LOW);
   }
 }
 
@@ -181,49 +207,40 @@ const char* GarageDoorRelay::state() {
 }
 
 bool GarageDoorRelay::handle() {
-  // Check to see of the door is open
-  int doorOpen = i2cPins ? 
-                  (*mcp).digitalRead(REED_OPEN_PIN) : 
-		  digitalRead(REED_OPEN_PIN); 
+  // Check to see if the door is open
+  int doorOpen = digitalReadWrapper(REED_OPEN_PIN);
   if (doorOpen == LOW) { // Door detected is in the open position
     if (doorState != DOOR_OPEN) {
-      if (useLeds) 
-	i2cPins ? 
-	  (*mcp).digitalWrite(LED_OPEN_PIN, HIGH) : 
-	  digitalWrite(LED_OPEN_PIN, HIGH); // Turn the LED on
+      if (useLeds) {
+        digitalWriteWrapper(LED_OPEN_PIN, HIGH); // Turn the LED on
+      }
       doorState = DOOR_OPEN;
       return true;
     }
   } else { // Door is not in the open position
     if (doorState == DOOR_OPEN ) {
-      if (useLeds) 
-	i2cPins ? 
-	  (*mcp).digitalWrite(LED_OPEN_PIN, LOW) : 
-	  digitalWrite(LED_OPEN_PIN, LOW); // Turn the LED off
+      if (useLeds) {
+        digitalWriteWrapper(LED_OPEN_PIN, LOW); // Turn the LED off
+      }
       doorState = DOOR_CLOSING;
       return true;
     }
   }
 
-  int doorClosed = i2cPins ? 
-                     (*mcp).digitalRead(REED_CLOSED_PIN) : 
-                     digitalRead(REED_CLOSED_PIN); // Check to see of the door is closed
-  if (doorClosed == LOW) // Door detected in the closed position
-  {
+  int doorClosed = digitalReadWrapper(REED_CLOSED_PIN); // Check to see if the door is closed
+  if (doorClosed == LOW) { // Door detected in the closed position
     if (doorState != DOOR_CLOSED) {
-      if (LED_CLOSED_PIN) 
-	i2cPins ? 
-	  (*mcp).digitalWrite(LED_CLOSED_PIN, HIGH) : 
-	  digitalWrite(LED_CLOSED_PIN, HIGH); // Turn the LED on
+      if (useLeds && LED_CLOSED_PIN) {
+        digitalWriteWrapper(LED_CLOSED_PIN, HIGH); // Turn the LED on
+      }
       doorState = DOOR_CLOSED;
       return true;
     }
   } else { // Door is not in the closed position
     if (doorState == DOOR_CLOSED) {
-      if (LED_CLOSED_PIN) 
-	i2cPins ? 
-	  (*mcp).digitalWrite(LED_CLOSED_PIN, LOW) : 
-	  digitalWrite(LED_CLOSED_PIN, LOW); // Turn the LED off
+      if (useLeds && LED_CLOSED_PIN) {
+        digitalWriteWrapper(LED_CLOSED_PIN, LOW); // Turn the LED off
+      }
       doorState = DOOR_OPENING;
       return true;
     }
@@ -231,12 +248,12 @@ bool GarageDoorRelay::handle() {
   return false;
 }
 
-// TimerRelay constructurs
-TimerRelay::TimerRelay(int a): Relay(a) {
+// TimerRelay constructors
+TimerRelay::TimerRelay(int a, bool backwards): Relay(a, backwards) {
   setEveryDayOn();
   //preferences.begin("TimerRelay", false);
 }
-TimerRelay::TimerRelay (int a, Adafruit_MCP23X17* b): Relay(a, b) {
+TimerRelay::TimerRelay (int a, Adafruit_MCP23X17* b, bool backwards): Relay(a, b, backwards) {
   setEveryDayOn();
   //preferences.begin("TimerRelay", false);
 }
@@ -520,10 +537,9 @@ void IrrigationZones::addZone(const char* name, const char* startTime, int runTi
 IrrigationRelay::IrrigationRelay (int a): TimerRelay(a) { }
 IrrigationRelay::IrrigationRelay (int a, Adafruit_MCP23X17* b): TimerRelay(a, b) { }
 //"patio_pots",  7,       true,      "7:00",              3,            , '1111111'
-IrrigationRelay::IrrigationRelay (const char* a, int b, bool c, const char* d, int e, bool f, Adafruit_MCP23X17* g): TimerRelay(b, g) { 
+IrrigationRelay::IrrigationRelay (const char* a, int b, bool c, const char* d, int e, bool f, Adafruit_MCP23X17* g): TimerRelay(b, g, c) {
   name = new char[strlen(a)+1];
   strcpy(name,a);
-  if (c) { this->setBackwards(); }
   this->setStartTimeFromString(d);
   this->setRuntimeMinutes(e);
   if (f) { this->setEveryOtherDayOn(); }

@@ -1,5 +1,5 @@
-#ifndef RELAY_H
-#define RELAY_H
+#ifndef MY_RELAY_H
+#define MY_RELAY_H
 
 #ifdef ESP32
 #include <ESPmDNS.h>
@@ -32,6 +32,11 @@ class Relay {
     void internalOn();
     void internalOff();
 
+    // GPIO wrapper methods to eliminate i2cPins ternary duplication
+    void pinModeWrapper(uint8_t pin, uint8_t mode);
+    void digitalWriteWrapper(uint8_t pin, uint8_t val);
+    int digitalReadWrapper(uint8_t pin);
+
   public:
     //variables
     bool on = false;
@@ -43,8 +48,11 @@ class Relay {
     char* name;
 
     //constructors
-    Relay (int a);
-    Relay (int a, Adafruit_MCP23X17* b);
+    Relay (int a, bool backwards = false);
+    Relay (int a, Adafruit_MCP23X17* b, bool backwards = false);
+
+    //destructor
+    virtual ~Relay();
 
     void setBackwards();
     void setScheduleOverride(bool a);
@@ -57,23 +65,25 @@ class Relay {
     const char* state();
 };
 
+// Door state enumeration
+enum DoorState {
+  DOOR_OPEN = 0,
+  DOOR_OPENING = 1,
+  DOOR_CLOSED = 2,
+  DOOR_CLOSING = 3
+};
+
 class GarageDoorRelay: public Relay {
-  bool i2cPins = false;
   bool useLeds = false;
-  Adafruit_MCP23X17* mcp;
   int DOOR_PIN;
   int REED_OPEN_PIN;
   int REED_CLOSED_PIN;
   int LED_OPEN_PIN;
   int LED_CLOSED_PIN;
-  const int DOOR_OPEN = 0;
-  const int DOOR_OPENING = 1;
-  const int DOOR_CLOSED = 2;
-  const int DOOR_CLOSING = 3;
 
   public:
     //variables
-    int doorState;
+    DoorState doorState;
 
     //constructurs
     GarageDoorRelay(int a, int b, int c );
@@ -108,9 +118,9 @@ class TimerRelay: public Relay {
     Array<int,7> runDays;
     Array<int,5> startTimesOfDay;
 
-    //constructurs
-    TimerRelay(int a);
-    TimerRelay (int a, Adafruit_MCP23X17* b);
+    //constructors
+    TimerRelay(int a, bool backwards = false);
+    TimerRelay (int a, Adafruit_MCP23X17* b, bool backwards = false);
 
     void setActive();
     void setInActive();
