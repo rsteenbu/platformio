@@ -18,8 +18,4 @@
 // DHT pin -> this is not used and should be in the build environment?
 #define DHT_PIN D6
 
-#define MEDUSA_MISTER_RUNTIME 30
-#define MEDUSA_HUMIDITY_BOUNDRY 70
-#define GECKSTER_MISTER_RUNTIME 30
-#define GECKSTER_HUMIDITY_BOUNDRY 50
 

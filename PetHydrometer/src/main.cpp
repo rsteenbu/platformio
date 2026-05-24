@@ -22,6 +22,7 @@
 #include <Adafruit_Sensor.h>
 
 #include "config_default.h"
+#include "pet_config.h"
 
 ESP8266WebServer server(80);
 
@@ -211,15 +212,6 @@ void setup() {
   Serial.begin(9600);
   Serial.println("Booting up");
 
-  // Setup the Relay
-  Mister->setup("misting_system");
-  Mister->setEveryDayOn();
-  // automatic runs at 8:00AM and 8:00PM
-  Mister->setStartTimeFromString("8:00");
-  Mister->setStartTimeFromString("12:00");
-  Mister->setStartTimeFromString("16:00");
-  Mister->setStartTimeFromString("20:00");
-
   // set I2C pins (SDA, CLK)
   Wire.begin(D2, D1);
 
@@ -256,28 +248,7 @@ void setup() {
   }
 
   DHTSensors.setStorage(storage_array);
-  
-  // medusa has two sensors, geckster only has one
-  if (strcmp(DEVICE_HOSTNAME, "iot-medusa") == 0) {
-    Mister->setRuntime(MEDUSA_MISTER_RUNTIME);
-    Mister->setMoistureLevel(MEDUSA_HUMIDITY_BOUNDRY);
-    myDHT* dhtLeft = new myDHT(D5, DHT22);
-    dhtLeft->begin();
-    dhtLeft->setSensorName("leftDHT");
-    DHTSensors.push_back(dhtLeft);
-
-    myDHT* dhtRight = new myDHT(D6, DHT22);
-    dhtRight->begin();
-    dhtRight->setSensorName("rightDHT");
-    DHTSensors.push_back(dhtRight);
-  } else if (strcmp(DEVICE_HOSTNAME, "iot-geckster") == 0) {
-    Mister->setRuntime(GECKSTER_MISTER_RUNTIME);
-    Mister->setMoistureLevel(GECKSTER_HUMIDITY_BOUNDRY);
-    myDHT* dht = new myDHT(D5, DHT22);
-    dht->begin();
-    dht->setSensorName("DHT");
-    DHTSensors.push_back(dht);
-  }
+  setupPet(Mister, DHTSensors);
 }
 
 time_t prevTime = 0;
