@@ -144,47 +144,46 @@ void handleSensors() {
   */
 }
 
+IrrigationRelay* findZoneByName(const String& zoneName) {
+  for (IrrigationRelay* relay : IrrigationZones) {
+    if (zoneName == relay->name) return relay;
+  }
+  return nullptr;
+}
+
 void handleStatus() {
-  time_t now;
-  now = time(nullptr);
+  time_t now = time(nullptr);
   StaticJsonDocument<JSON_SIZE> doc;
-  char suppliedZone[15];
-  server.arg("zone").toCharArray(suppliedZone, 15);
-  bool matchFound = false;
 
-  JsonObject switches = doc.createNestedObject("switches");
-  JsonObject sensors = doc.createNestedObject("sensors");
-  for (IrrigationRelay * relay : IrrigationZones) {
-    if (server.arg("zone") == relay->name) {
-      matchFound = true;
-      switches[relay->name]["Active"] = relay->active;
-      switches[relay->name]["State"] = relay->state();
-      switches[relay->name]["Override"] = relay->scheduleOverride;
-      switches[relay->name]["Moisture Level"] = relay->moistureLevel;
-      switches[relay->name]["Moisture Percentage"] = relay->moisturePercentage;
-      switches[relay->name]["Time Left"] = relay->timeLeftToRun;
-      switches[relay->name]["Last Run Time"] = relay->prettyOnTime;
-      switches[relay->name]["Next Run Time"] = relay->nextTimeToRun;
-      char weekSchedule[8];
-      relay->getWeekSchedule(weekSchedule);
-      switches[relay->name]["Week Schedule"] = weekSchedule;
-    }
-  } 
-
-  if (!matchFound) {
+  IrrigationRelay* relay = findZoneByName(server.arg("zone"));
+  if (!relay) {
     char msg[60];
-    sprintf(msg, "ERROR: irrigation zone %s not found", suppliedZone);
+    sprintf(msg, "ERROR: irrigation zone %s not found", server.arg("zone").c_str());
     server.send(404, "text/plain", msg);
     return;
   }
 
-//  sensors["Door Status"] = shedDoor->state();
+  JsonObject switches = doc.createNestedObject("switches");
+  JsonObject sensors = doc.createNestedObject("sensors");
+
+  switches[relay->name]["Active"] = relay->active;
+  switches[relay->name]["State"] = relay->state();
+  switches[relay->name]["Override"] = relay->scheduleOverride;
+  switches[relay->name]["Moisture Level"] = relay->moistureLevel;
+  switches[relay->name]["Moisture Percentage"] = relay->moisturePercentage;
+  switches[relay->name]["Time Left"] = relay->timeLeftToRun;
+  switches[relay->name]["Last Run Time"] = relay->prettyOnTime;
+  switches[relay->name]["Next Run Time"] = relay->nextTimeToRun;
+  char weekSchedule[8];
+  relay->getWeekSchedule(weekSchedule);
+  switches[relay->name]["Week Schedule"] = weekSchedule;
+
   sensors["Light Level"] = veml.readLux();
   doc["debug"] = debug;
 
   char timeString[20];
   struct tm *timeinfo = localtime(&now);
-  strftime (timeString,20,"%D %T",timeinfo);
+  strftime(timeString, 20, "%D %T", timeinfo);
   doc["time"] = timeString;
 
   size_t jsonDocSize = measureJsonPretty(doc);
@@ -195,7 +194,7 @@ void handleStatus() {
   } else {
     String httpResponse;
     serializeJsonPretty(doc, httpResponse);
-    server.send(500, "text/plain", httpResponse);
+    server.send(200, "text/plain", httpResponse);
   }
 }
 
@@ -218,60 +217,46 @@ void logIrrigationEvent(IrrigationRelay * relay, const char* trigger) {
 }
 
 void handleIrrigation() {
-  bool matchFound = false;
-  char suppliedZone[15];
-  server.arg("zone").toCharArray(suppliedZone, 15);
-
-  for (IrrigationRelay * relay : IrrigationZones) {
-    if (debug) {
-      syslog.logf(LOG_INFO, "DEBUG: irrigation handling: zone arg: %s, relay name: %s", suppliedZone, relay->name);
-    }
-
-    if (server.arg("zone") == relay->name) {
-      matchFound = true;
-      if (server.arg("override") == "true") {
-	      relay->setScheduleOverride(true);
-              syslog.appName(IRRIGATION_APPNAME);
-	      syslog.logf(LOG_INFO, "Schedule disabled for irrigation zone %s on by API request", relay->name);
-	      syslog.appName(SYSTEM_APPNAME);
-	      server.send(200, "text/plain");
-	      return;
-      } else if (server.arg("override") == "false") {
-	      relay->setScheduleOverride(false);
-              syslog.appName(IRRIGATION_APPNAME);
-	      syslog.logf(LOG_INFO, "Schedule enabled for irrigation zone %s on by API request", relay->name);
-	      syslog.appName(SYSTEM_APPNAME);
-	      server.send(200, "text/plain");
-	      return;
-      } else if (server.arg("state") == "status") {
-	server.send(200, "text/plain", relay->status() ? "1" : "0");
-	return;
-      } else if (server.arg("state") == "on") {
-	      relay->switchOn();
-	      //TODO: log events should only be when state changes
-	      logIrrigationEvent(relay, "API");
-	      server.send(200, "text/plain");
-	      return;
-      } else if (server.arg("state") == "off") {
-	      relay->switchOff();
-	      logIrrigationEvent(relay, "API");
-	      server.send(200, "text/plain");
-	      return;
-      } else {
-	      char msg[40];
-	      sprintf(msg, "ERROR: state command not specified for %s", relay->name);
-	      server.send(404, "text/plain", msg);
-      }
-    }
-  }
-  if (!matchFound) {
+  IrrigationRelay* relay = findZoneByName(server.arg("zone"));
+  if (!relay) {
     char msg[60];
-    sprintf(msg, "ERROR: irrigation zone %s not found", suppliedZone);
+    sprintf(msg, "ERROR: irrigation zone %s not found", server.arg("zone").c_str());
     server.send(404, "text/plain", msg);
     return;
   }
 
-  server.send(404, "text/plain", "ERROR: Unknown irrigation command");
+  if (debug) {
+    syslog.logf(LOG_INFO, "DEBUG: irrigation handling: zone arg: %s, relay name: %s", server.arg("zone").c_str(), relay->name);
+  }
+
+  if (server.arg("override") == "true") {
+    relay->setScheduleOverride(true);
+    syslog.appName(IRRIGATION_APPNAME);
+    syslog.logf(LOG_INFO, "Schedule disabled for irrigation zone %s on by API request", relay->name);
+    syslog.appName(SYSTEM_APPNAME);
+    server.send(200, "text/plain");
+  } else if (server.arg("override") == "false") {
+    relay->setScheduleOverride(false);
+    syslog.appName(IRRIGATION_APPNAME);
+    syslog.logf(LOG_INFO, "Schedule enabled for irrigation zone %s on by API request", relay->name);
+    syslog.appName(SYSTEM_APPNAME);
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "status") {
+    server.send(200, "text/plain", relay->status() ? "1" : "0");
+  } else if (server.arg("state") == "on") {
+    relay->switchOn();
+    //TODO: log events should only be when state changes
+    logIrrigationEvent(relay, "API");
+    server.send(200, "text/plain");
+  } else if (server.arg("state") == "off") {
+    relay->switchOff();
+    logIrrigationEvent(relay, "API");
+    server.send(200, "text/plain");
+  } else {
+    char msg[40];
+    sprintf(msg, "ERROR: state command not specified for %s", relay->name);
+    server.send(404, "text/plain", msg);
+  }
 }
 
 void setup() {
