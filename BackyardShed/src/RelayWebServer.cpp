@@ -96,7 +96,7 @@ void handleDebug() {
     syslog.log(LOG_INFO, "Debug level 1");
     debug = 1;
     server.send(200, "text/plain");
-  } if (server.arg("level") == "2") {
+  } else if (server.arg("level") == "2") {
     syslog.log(LOG_INFO, "Debug level 2");
     debug = 2;
     server.send(200, "text/plain");
