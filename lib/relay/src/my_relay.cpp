@@ -130,7 +130,7 @@ const char* Relay::state() {
 }
 
 
-    //constructors
+//constructors
 GarageDoorRelay::GarageDoorRelay(int a, int b, int c)
   : GarageDoorRelay(a, b, c, 0, 0) {
   useLeds = false;
