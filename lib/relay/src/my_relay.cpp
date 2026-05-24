@@ -46,14 +46,16 @@ void Relay::internalOff() {
 }
 
 //constructors
-Relay::Relay (int a, bool backwards): pin(a), name(nullptr) {
+Relay::Relay (int a, bool backwards): pin(a) {
+  name[0] = '\0';
   if (backwards) {
     onVal = LOW;
     offVal = HIGH;
   }
 }
 
-Relay::Relay (int a, Adafruit_MCP23X17* b, bool backwards): mcp(b), i2cPins(true), pin(a), name(nullptr) {
+Relay::Relay (int a, Adafruit_MCP23X17* b, bool backwards): mcp(b), i2cPins(true), pin(a) {
+  name[0] = '\0';
   if (backwards) {
     onVal = LOW;
     offVal = HIGH;
@@ -61,12 +63,7 @@ Relay::Relay (int a, Adafruit_MCP23X17* b, bool backwards): mcp(b), i2cPins(true
 }
 
 //destructor
-Relay::~Relay() {
-  if (name != nullptr) {
-    delete[] name;
-    name = nullptr;
-  }
-}
+Relay::~Relay() {}
 
 void Relay::setBackwards() {
   onVal = LOW;
@@ -90,8 +87,8 @@ int Relay::status() {
 }
 
 void Relay::setup(const char* a) {
-  name = new char[strlen(a)+1];
-  strcpy(name,a);
+  strncpy(name, a, sizeof(name) - 1);
+  name[sizeof(name) - 1] = '\0';
   this->setup();
 }
 
@@ -493,8 +490,8 @@ IrrigationRelay::IrrigationRelay (int a): TimerRelay(a) { }
 IrrigationRelay::IrrigationRelay (int a, Adafruit_MCP23X17* b): TimerRelay(a, b) { }
 //"patio_pots",  7,       true,      "7:00",              3,            , '1111111'
 IrrigationRelay::IrrigationRelay (const char* a, int b, bool c, const char* d, int e, bool f, Adafruit_MCP23X17* g): TimerRelay(b, g, c) {
-  name = new char[strlen(a)+1];
-  strcpy(name,a);
+  strncpy(name, a, sizeof(name) - 1);
+  name[sizeof(name) - 1] = '\0';
   this->setStartTimeFromString(d);
   this->setRuntimeMinutes(e);
   if (f) { this->setEveryOtherDayOn(); }

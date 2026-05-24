@@ -45,7 +45,7 @@ class Relay {
     time_t offTime = 0;
     char prettyOffTime[18];
     char prettyOnTime[18];
-    char* name;
+    char name[32];
 
     //constructors
     Relay (int a, bool backwards = false);
