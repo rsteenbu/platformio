@@ -11,9 +11,7 @@
 #include <Wire.h>
 #include "Adafruit_MCP23X17.h"
 
-//#include <my_myreed.h>
 #include <my_relay.h>
-//#include <irrigation_relay_container.h>
 #include <my_veml.h>
 #include "irrigation_config.h"
 
