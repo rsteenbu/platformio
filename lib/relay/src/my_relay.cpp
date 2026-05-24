@@ -475,23 +475,12 @@ bool TimerRelay::isTimeToStop() {
   return now >= onTime + runTime;
 }
 
-bool TimerRelay::handle() {
-  prevTime = now;
-  now = time(nullptr);
-
-  // only check every second
-  if ( now == prevTime ) return false;
-
-  //uptime the time left to run every second
+bool TimerRelay::doHandle() {
   setTimeLeftToRun();
   setNextTimeToRun();
 
-  // if we don't have runtime set, then just return
   if ( initialRunTime == 0 ) return false;
 
-  // if we're on, turn it off if it's been more than than the time to run or if it's started raining
-  // if the scheduleOverride is on, turn it off if the timer expires and resume normal
-  // operation
   if ( on && isTimeToStop() ) {
     switchOff();
     return true;
@@ -499,14 +488,22 @@ bool TimerRelay::handle() {
 
   if ( scheduleOverride ) return false;
 
-  // if we're not on, turn it on if it's the right day and time
   if ( !on && isTimeToStart() ) {
     if (!active) return false;
     switchOn();
     return true;
-  } 
+  }
 
   return false;
+}
+
+bool TimerRelay::handle() {
+  prevTime = now;
+  now = time(nullptr);
+
+  if ( now == prevTime ) return false;
+
+  return doHandle();
 }
 
 /*
@@ -604,50 +601,25 @@ const char* IrrigationRelay::state() {
   }
 }
 
+bool IrrigationRelay::isTimeToStart() {
+  return dry && TimerRelay::isTimeToStart();
+}
+
 bool IrrigationRelay::handle() {
   prevTime = now;
   now = time(nullptr);
 
-  // only process the rest every 1 second
   if ( now == prevTime ) return false;
 
-  // uptime the time left to run every second
-  setTimeLeftToRun();
-  setNextTimeToRun();
-
-  // set the moisture level on every loop
   if (moistureSensor) checkMoisture();
 
-  // if we don't have runtime set, then just return
-  if (initialRunTime == 0)  return false;
-
-  // if we're on, turn it off if it's been more than than the time to run or if it's started raining
-  // if the scheduleOverride is on, turn it off if the timer expires and resume normal
-  // operation
-  if (on && isTimeToStop())
-  {
+  // turn off if wet, but respect scheduleOverride
+  if ( !scheduleOverride && on && !dry ) {
     switchOff();
     return true;
   }
 
-  if ( scheduleOverride ) return false;
-
-  // if we're on it started raining, turn it off
-  // but ignore the scheduleOveride and stay running if it's set
-  if (on && !dry)
-  {
-    switchOff();
-    return true;
-  }
-
-  // if we're not on, turn it on if it's the right day and time
-  if ( !on && isTimeToStart() ) {
-    if (!dry || !active) return false; 
-    switchOn();
-    return true;
-  }
-
-  return false;
+  return doHandle();
 }
 
 bool ScheduleRelay::findTime(int hour, int min, int timeArray[4][2] ) {

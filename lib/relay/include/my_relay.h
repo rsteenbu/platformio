@@ -107,6 +107,7 @@ class TimerRelay: public Relay {
 
     void setTimeLeftToRun();
     void setNextTimeToRun();
+    virtual bool doHandle();
     //Preferences preferences;
 
   public:
@@ -141,7 +142,7 @@ class TimerRelay: public Relay {
     int checkDayToRun(int weekDay);
     int checkDayToRun();
     void checkStartTime(String &timesToStart);
-    bool isTimeToStart();
+    virtual bool isTimeToStart();
     bool isTimeToStop();
     bool handle();
 };
@@ -164,6 +165,8 @@ class IrrigationRelay: public TimerRelay {
     bool moistureSensor = false;
     int moisturePercentage = -1;
     int moistureLevel = -1;
+
+    bool isTimeToStart() override;
 
     //constructors
     IrrigationRelay (int a);
