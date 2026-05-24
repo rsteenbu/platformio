@@ -198,6 +198,12 @@ void handleStatus() {
   }
 }
 
+void logIrrigation(const char* msg) {
+  syslog.appName(IRRIGATION_APPNAME);
+  syslog.log(LOG_INFO, msg);
+  syslog.appName(SYSTEM_APPNAME);
+}
+
 void logIrrigationEvent(IrrigationRelay * relay, const char* trigger) {
   StaticJsonDocument<JSON_SIZE> doc;
   doc["unit"] ="backyard";
@@ -209,11 +215,7 @@ void logIrrigationEvent(IrrigationRelay * relay, const char* trigger) {
 
   String logMessage;
   serializeJson(doc, logMessage);
-
-  syslog.appName(IRRIGATION_APPNAME);
-  syslog.log(LOG_INFO, logMessage);
-  syslog.appName(SYSTEM_APPNAME);
-
+  logIrrigation(logMessage.c_str());
 }
 
 void handleIrrigation() {
@@ -231,15 +233,15 @@ void handleIrrigation() {
 
   if (server.arg("override") == "true") {
     relay->setScheduleOverride(true);
-    syslog.appName(IRRIGATION_APPNAME);
-    syslog.logf(LOG_INFO, "Schedule disabled for irrigation zone %s on by API request", relay->name);
-    syslog.appName(SYSTEM_APPNAME);
+    char msg[60];
+    sprintf(msg, "Schedule disabled for irrigation zone %s by API request", relay->name);
+    logIrrigation(msg);
     server.send(200, "text/plain");
   } else if (server.arg("override") == "false") {
     relay->setScheduleOverride(false);
-    syslog.appName(IRRIGATION_APPNAME);
-    syslog.logf(LOG_INFO, "Schedule enabled for irrigation zone %s on by API request", relay->name);
-    syslog.appName(SYSTEM_APPNAME);
+    char msg[60];
+    sprintf(msg, "Schedule enabled for irrigation zone %s by API request", relay->name);
+    logIrrigation(msg);
     server.send(200, "text/plain");
   } else if (server.arg("state") == "status") {
     server.send(200, "text/plain", relay->status() ? "1" : "0");
