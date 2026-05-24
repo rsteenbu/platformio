@@ -102,11 +102,15 @@ void Relay::setup() {
   // iterate through one on off cycle to work the kinks out
   internalOn(); internalOff();
 
+  static bool ntpConfigured = false;
+  if (!ntpConfigured) {
 #ifdef ESP32
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 #else
-  configTime(MYTZ, ntpServer);
+    configTime(MYTZ, ntpServer);
 #endif
+    ntpConfigured = true;
+  }
   onTime = offTime = time(nullptr);
   strcpy(prettyOnTime,"None");
   strcpy(prettyOffTime,"None");
