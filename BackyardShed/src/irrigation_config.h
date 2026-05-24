@@ -23,10 +23,10 @@ const IrrigationZoneConfig IRRIGATION_ZONES[] = {
   {"cottage",         6,     true,    "7:15",       15,         true},
   {"south_fence",     5,     true,    "7:30",        5,        false},
   {"hill",            4,     true,    "7:45",       20,        false},
-  {"unused_0",        3,     true,    "8:15",        5,        false},
+  {"back_pots",       3,     true,    "8:15",        5,        false},
   {"back_fence",      2,     true,    "8:15",       15,        false},
   {"north_fence",     1,     true,    "8:30",       15,         true},
-  {"unused_1",        0,     true,    "8:30",        5,         true}
+  {"unused_0",        0,     true,    "8:30",        5,         true}
 };
 
 // Number of irrigation zones (calculated automatically)
