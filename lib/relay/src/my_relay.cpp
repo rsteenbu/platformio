@@ -129,35 +129,21 @@ const char* Relay::state() {
 }
 
 
-    //constructurs
-GarageDoorRelay::GarageDoorRelay(int a, int b, int c ): Relay(a) {
-  DOOR_PIN = a;
-  REED_OPEN_PIN = b;
-  REED_CLOSED_PIN = c;
-
+    //constructors
+GarageDoorRelay::GarageDoorRelay(int a, int b, int c)
+  : GarageDoorRelay(a, b, c, 0, 0) {
   useLeds = false;
   // Since the other end of the reed switch is connected to ground, we need
   // to pull-up the reed switch pin internally.
   pinMode(REED_OPEN_PIN, INPUT_PULLUP);
   pinMode(REED_CLOSED_PIN, INPUT_PULLUP);
 }
-GarageDoorRelay::GarageDoorRelay(int a, int b, int c, int d, int e ): Relay(a) {
-  DOOR_PIN = a;
-  REED_OPEN_PIN = b;
-  REED_CLOSED_PIN = c;
-  LED_OPEN_PIN = d;
-  LED_CLOSED_PIN = e;
 
-  useLeds = true;
-}
-GarageDoorRelay::GarageDoorRelay(int a, int b, int c, int d, int e, Adafruit_MCP23X17* f): Relay(a, f) {
-  DOOR_PIN = a;
-  REED_OPEN_PIN = b;
-  REED_CLOSED_PIN = c;
-  LED_OPEN_PIN = d;
-  LED_CLOSED_PIN = e;
-  useLeds = true;
-}
+GarageDoorRelay::GarageDoorRelay(int a, int b, int c, int d, int e)
+  : Relay(a), DOOR_PIN(a), REED_OPEN_PIN(b), REED_CLOSED_PIN(c), LED_OPEN_PIN(d), LED_CLOSED_PIN(e), useLeds(true) {}
+
+GarageDoorRelay::GarageDoorRelay(int a, int b, int c, int d, int e, Adafruit_MCP23X17* f)
+  : Relay(a, f), DOOR_PIN(a), REED_OPEN_PIN(b), REED_CLOSED_PIN(c), LED_OPEN_PIN(d), LED_CLOSED_PIN(e), useLeds(true) {}
 
 int GarageDoorRelay::status() {
   return doorState;
