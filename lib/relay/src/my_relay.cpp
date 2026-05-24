@@ -287,7 +287,7 @@ void TimerRelay::setNextTimeToRun() {
   int startMinute = 0;
   int n;
   for ( n=0 ; n<7 ; n++ ) {
-    int dayFromThisDay = (n + thisDay) & 7;
+    int dayFromThisDay = (n + thisDay) % 7;
 
     // Skip checking this day if we're not scheduled to run
     if (! runDays[dayFromThisDay]) continue;
@@ -571,13 +571,13 @@ void IrrigationRelay::setMoistureLevel(int n) {
 }
 
 void IrrigationRelay::checkMoisture() {
-  double calibratedMoistureLevel = moistureLevel;
-
   if (i2cMoistureSensor) {
     moistureLevel = ads.readADC_SingleEnded(moisturePin);
   } else {
     moistureLevel = analogRead(moisturePin);
   }
+
+  double calibratedMoistureLevel = moistureLevel;
 
   if (calibratedMoistureLevel > dryMoistureLevel) {
     calibratedMoistureLevel = dryMoistureLevel;
