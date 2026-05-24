@@ -176,20 +176,12 @@ void GarageDoorRelay::operate() {
 
 const char* GarageDoorRelay::state() {
   switch (doorState) {
-    case 0:
-      return "OPEN";
-      break;
-    case 1:
-      return "OPENING";
-      break;
-    case 2:
-      return "CLOSED";
-      break;
-    case 3:
-      return "CLOSING";
-      break;
+    case DOOR_OPEN:    return "OPEN";
+    case DOOR_OPENING: return "OPENING";
+    case DOOR_CLOSED:  return "CLOSED";
+    case DOOR_CLOSING: return "CLOSING";
   }
-  return "UKNOWN";
+  return "UNKNOWN";
 }
 
 bool GarageDoorRelay::handle() {
@@ -491,30 +483,6 @@ bool TimerRelay::handle() {
 
   return doHandle();
 }
-
-/*
-
-//Manage a vector of Irrigation Relays
-IrrigationZones::IrrigationZones (int a) { }
-IrrigationZones::IrrigationZones (const int ELEMENT_COUNT_MAX, Adafruit_MCP23X17* b) {
-  zoneCount = a;
-
-  this::IrrigationRelay * storage_array[ELEMENT_COUNT_MAX];
-  Elements.setStorage(storage_array);
-}
-
-void IrrigationZones::addZone(const char* name, const char* startTime, int runTime) {
-
-  IrrigationRelay * irz;
-
-  if (isMCP) {
-    irz = new IrrigationRelay(name, zoneAddress++, true, startTime, runTime, false, mcp);
-  }
-
-  irz->setup();
-  IrrigationZones.push_back(irz);
-}
-*/
 
 // IrrigationRelay constructors
 IrrigationRelay::IrrigationRelay (int a): TimerRelay(a) { }
