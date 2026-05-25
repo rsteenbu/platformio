@@ -26,14 +26,8 @@
 
 ESP8266WebServer server(80);
 
-// Create a new syslog instance with LOG_LOCAL0 facility
 #define SYSTEM_APPNAME "arduino"
-#define LIGHT_APPNAME "lightsensor"
-#define THERMO_APPNAME "thermometer"
-#define MOTION_APPNAME "motionsensor"
-#define LIGHTSWITCH_APPNAME "lightswitch"
 #define MISTER_APPNAME "mister"
-#define IRRIGATION_APPNAME "irrigation"
 WiFiUDP udpClient;
 Syslog syslog(udpClient, SYSLOG_SERVER, SYSLOG_PORT, DEVICE_HOSTNAME, SYSTEM_APPNAME, LOG_LOCAL0);
 
@@ -47,21 +41,14 @@ MOTION * motion = new MOTION(D7);
 IrrigationRelay * Mister = new IrrigationRelay(D3);
 
 void handleDebug() {
-  if (server.arg("level") == "status") {
+  String levelArg = server.arg("level");
+  if (levelArg == "status") {
     char msg[40];
     sprintf(msg, "Debug level: %d", debug);
     server.send(200, "text/plain", msg);
-  } else if (server.arg("level") == "0") {
-    syslog.log(LOG_INFO, "Debug level 0");
-    debug = 0;
-    server.send(200, "text/plain");
-  } else if (server.arg("level") == "1") {
-    syslog.log(LOG_INFO, "Debug level 1");
-    debug = 1;
-    server.send(200, "text/plain");
-  } else if (server.arg("level") == "2") {
-    syslog.log(LOG_INFO, "Debug level 2");
-    debug = 2;
+  } else if (levelArg == "0" || levelArg == "1" || levelArg == "2") {
+    debug = levelArg.toInt();
+    syslog.logf(LOG_INFO, "Debug level %d", debug);
     server.send(200, "text/plain");
   } else {
     server.send(404, "text/plain", "ERROR: unknown debug command");
@@ -105,65 +92,54 @@ void handleDisplay() {
     lcd->setBackLight(false);
     syslog.log(LOG_INFO, "Turned LCD Display off");
   } else {
-    server.send(404, "text/plain", "ERROR: unknown scani2c command");
+    server.send(404, "text/plain", "ERROR: unknown display command");
   }
 }
 
 void handleSensors() {
+  String tempArg = server.arg("temp");
+  String humidArg = server.arg("humidity");
   for (myDHT* sensor : DHTSensors) {
     char msg[10];
-    if (server.arg("temp") == "left") {
-      if (strcmp(sensor->sensorName, "leftDHT") == 0) {
-	sprintf(msg, "%0.2f", sensor->temp);
-	server.send(200, "text/plain", msg);
-      }
-    } else if (server.arg("temp") == "right") {
-      if (strcmp(sensor->sensorName, "rightDHT") == 0) {
-	sprintf(msg, "%0.2f", sensor->temp);
-	server.send(200, "text/plain", msg);
-      }
-    } else if (server.arg("humidity") == "left") {
-      if (strcmp(sensor->sensorName, "leftDHT") == 0) {
-	sprintf(msg, "%0.2f", sensor->humid);
-	server.send(200, "text/plain", msg);
-      }
-    } else if (server.arg("humidity") == "right") {
-      if (strcmp(sensor->sensorName, "rightDHT") == 0) {
-	sprintf(msg, "%0.2f", sensor->humid);
-	server.send(200, "text/plain", msg);
-      }
-    } else {
-      server.send(404, "text/plain", "ERROR: Sensor not found.");
+    if (tempArg == "left" && strcmp(sensor->sensorName, "leftDHT") == 0) {
+      sprintf(msg, "%0.2f", sensor->temp);
+      server.send(200, "text/plain", msg);
+      return;
+    } else if (tempArg == "right" && strcmp(sensor->sensorName, "rightDHT") == 0) {
+      sprintf(msg, "%0.2f", sensor->temp);
+      server.send(200, "text/plain", msg);
+      return;
+    } else if (humidArg == "left" && strcmp(sensor->sensorName, "leftDHT") == 0) {
+      sprintf(msg, "%0.2f", sensor->humid);
+      server.send(200, "text/plain", msg);
+      return;
+    } else if (humidArg == "right" && strcmp(sensor->sensorName, "rightDHT") == 0) {
+      sprintf(msg, "%0.2f", sensor->humid);
+      server.send(200, "text/plain", msg);
+      return;
     }
   }
+  server.send(404, "text/plain", "ERROR: Sensor not found.");
 }
 
 void handlePrometheus() {
 
   static size_t const BUFSIZE = 1024;
-  /*
-  char response_template[BUFSIZE] = 
-    "# HELP " PET_NAME "_info Metadata about the device.\n"
-    "# TYPE " PET_NAME "t_info gauge\n"
-    "# UNIT " PET_NAME "_info \n"
-    PET_NAME "_info{board=\"%s\",sensor=\"%s\"} 1\n";
-*/
+  static char const *response_template =
+      "# HELP " PET_NAME "_air_humidity_percent Air humidity.\n"
+      "# TYPE " PET_NAME "_air_humidity_percent gauge\n"
+      "# UNIT " PET_NAME "_air_humidity_percent %%\n"
+      PET_NAME "_air_humidity_percent{petName=\"" PET_NAME "\",type=\"humidity\",sensorName=\"%s\"} %f\n"
+      "# HELP " PET_NAME "_air_temperature_fahrenheit Air temperature.\n"
+      "# TYPE " PET_NAME "_air_temperature_fahrenheit gauge\n"
+      "# UNIT " PET_NAME "_air_temperature_fahrenheit \u00B0F\n"
+      PET_NAME "_air_temperature_fahrenheit{petName=\"" PET_NAME "\",type=\"temperature\",sensorName=\"%s\"} %f\n"
+      ;
   char response[BUFSIZE] = "";
+  size_t offset = 0;
   for (myDHT* sensor : DHTSensors) {
-      static char const *response_template =
-	  "# HELP " PET_NAME "_air_humidity_percent Air humidity.\n"
-	  "# TYPE " PET_NAME "_air_humidity_percent gauge\n"
-	  "# UNIT " PET_NAME "_air_humidity_percent %%\n"
-	  PET_NAME "_air_humidity_percent{petName=\"" PET_NAME "\",type=\"humidity\",sensorName=\"%s\"} %f\n"
-	  "# HELP " PET_NAME "_air_temperature_fahrenheit Air temperature.\n"
-	  "# TYPE " PET_NAME "_air_temperature_fahrenheit gauge\n"
-	  "# UNIT " PET_NAME "_air_temperature_fahrenheit \u00B0F\n"
-	  PET_NAME "_air_temperature_fahrenheit{petName=\"" PET_NAME "\",type=\"temperature\",sensorName=\"%s\"} %f\n"
-	  ;
-    
-      char response_part[BUFSIZE];
-      snprintf(response_part, BUFSIZE, response_template, sensor->sensorName, sensor->humid, sensor->sensorName, sensor->temp);
-      strcat(response, response_part);
+    offset += snprintf(response + offset, BUFSIZE - offset, response_template,
+                       sensor->sensorName, sensor->humid, sensor->sensorName, sensor->temp);
   }
 
     server.send(200, "text/plain; charset=utf-8", response);
@@ -251,14 +227,13 @@ void setup() {
   setupPet(Mister, DHTSensors);
 }
 
-time_t prevTime = 0;
-time_t now = 0;
-bool misterRan = false;
-int misterStatus = 0;
-int prevMisterStatus = 0;
-int avgHumidity = -1;
-
 void loop() {
+  static time_t prevTime = 0;
+  static time_t now = 0;
+  static bool misterRan = false;
+  static int misterStatus = 0;
+  static int prevMisterStatus = 0;
+  static int avgHumidity = -1;
   ArduinoOTA.handle();
   server.handleClient();
 
@@ -308,15 +283,15 @@ void loop() {
   if (prevMisterStatus != misterStatus) {
     syslog.appName(MISTER_APPNAME);
     if (Mister->on) {
-      syslog.logf(LOG_INFO, "Scheduled mister run started, humidty at %d: ", avgHumidity);
+      syslog.logf(LOG_INFO, "Scheduled mister run started, humidity at %d: ", avgHumidity);
     } else {
-      syslog.logf(LOG_INFO, "Scheduled mister run finished, humidty at %d: ", avgHumidity);
+      syslog.logf(LOG_INFO, "Scheduled mister run finished, humidity at %d: ", avgHumidity);
     }
       syslog.appName(SYSTEM_APPNAME);
   }
 
 
-  // display snesor data or mister data on lcd 
+  // display sensor data or mister data on lcd
   if ( now != prevTime ) {
     lcd->setCursor(0, 0);
 
