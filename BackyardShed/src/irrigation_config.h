@@ -22,10 +22,10 @@ const IrrigationZoneConfig IRRIGATION_ZONES[] = {
   {"patio_pots",      7,     true,    "7:00",        3,        false},
   {"cottage",         6,     true,    "7:15",       15,         true},
   {"south_fence",     5,     true,    "7:30",        5,        false},
-  {"hill",            4,     true,    "7:45",       20,        false},
-  {"back_pots",       3,     true,    "8:15",        5,        false},
-  {"back_fence",      2,     true,    "8:15",       15,        false},
-  {"north_fence",     1,     true,    "8:30",       15,         true},
+  {"hill",            4,     true,    "7:45",       15,        false},
+  {"back_pots",       3,     true,    "8:15",       10,        false},
+  {"back_fence",      2,     true,    "8:30",       15,        false},
+  {"north_fence",     1,     true,    "8:45",       15,         true},
   {"unused_0",        0,     true,    "8:30",        5,         true}
 };
 
