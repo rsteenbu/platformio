@@ -114,7 +114,7 @@ class TimerRelay: public Relay {
     int runTime = 0;
     bool active = true;
     //bool active =  preferences.getBool("active", true);
-    char timeLeftToRun[6];
+    char timeLeftToRun[8];
     char nextTimeToRun[18];
     Array<int,7> runDays;
     Array<int,5> startTimesOfDay;

@@ -35,7 +35,7 @@ Vector<myDHT*> DHTSensors;
 myDHT* storage_array[8];
 
 int debug = DEBUG;
-char msg[40];
+char msg[64];
 LCD * lcd = new LCD();
 MOTION * motion = new MOTION(D7); 
 IrrigationRelay * Mister = new IrrigationRelay(D3);
@@ -203,7 +203,7 @@ void setup() {
 
   sprintf(msg, "%s Alive! at IP: %s", DEVICE_HOSTNAME, (char*) WiFi.localIP().toString().c_str());
   Serial.println(msg);
-  syslog.logf(LOG_INFO, msg);
+  syslog.logf(LOG_INFO, "%s", msg);
 
   // Setup OTA Update
   ArduinoOTA.begin();
@@ -297,8 +297,8 @@ void loop() {
 
     // If the mister is running, show the count down timer
     if ( Mister->status() ) {
-      char row1[17];
-      sprintf(row1, "Time left: %s", Mister->timeLeftToRun); 
+      char row1[20];
+      sprintf(row1, "Time left: %s", Mister->timeLeftToRun);
       lcd->print(row1);
       misterRan = true;
     } else {
